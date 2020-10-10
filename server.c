@@ -125,18 +125,44 @@ int receive_request_from_client(Client *client) {
     return 1;
 }
 
-/*------------------------check command validness-----------------------------*/
-int check_command_validness(char *cmd, Client *client) {
-    strcmp(cmd, "");
+/*--------------------------main logic---------------------------------*/
+void user(Client *client) {
+    if (client->state == CONNECT) {
+        if (!strcmp(client->argu, "anonymous")) {
+            client->state = USER;
+            send_msg_to_client("331 Guest login ok, send your complete e-mail address as password.", client);
+        } else {
+            //TODO:
+            send_msg_to_client("", client);
+        }
+    } else {
+        //TODO: ?
+    }
 }
 
-/*--------------------------main logic---------------------------------*/
+void pass(Client *client) {
+    if (client->state == USER) {
+        client->state = PASS;
+        send_msg_to_client("230 Login successful.", client);
+    } else {
+        // TODO: ?
+    }
+}
+
 void listen_to_client(Client *client) {
     client->mode = CONNECT;
     send_msg_to_client("220 Anonymous FTP server ready.\r\n", client);
     while (1) {
         if (!receive_request_from_client(client)) {
             continue;
+        }
+        if (!strcmp(client->command, "USER")) {
+            user(client);
+        }
+        elif (!strcmp(client->command, "PASS")) {
+            pass(client);
+        }
+        elif (!strcmp(client->command, "SYST")) {
         }
     }
 }
