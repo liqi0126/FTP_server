@@ -96,7 +96,7 @@ int setup_socket(Server *server) {
     // bind socket with ip
     if (bind(server->control_sockfd, (struct sockaddr *)&server->addr, server->addrlen) == -1) {
         printf("Error: fail to bind socket, error msg: %s(%d)\n", strerror(errno), errno);
-        return 0
+        return 0;
     }
 
     // listen socket
@@ -121,13 +121,18 @@ int receive_request_from_client(Client *client) {
         printf("fail to receive msg from client.\n");
         return 0;
     }
-    sscanf(buf, "%s %s", client->command, client->argu);
+    sscanf(buf, "%s %s", client->command, client->argu);  // TODO: check correctness
     return 1;
+}
+
+/*------------------------check command validness-----------------------------*/
+int check_command_validness(char *cmd, Client *client) {
+    strcmp(cmd, "");
 }
 
 /*--------------------------main logic---------------------------------*/
 void listen_to_client(Client *client) {
-    client.mode = CONNECT;
+    client->mode = CONNECT;
     send_msg_to_client("220 Anonymous FTP server ready.\r\n", client);
     while (1) {
         if (!receive_request_from_client(client)) {
