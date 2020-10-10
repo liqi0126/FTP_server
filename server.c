@@ -126,43 +126,134 @@ int receive_request_from_client(Client *client) {
 }
 
 /*--------------------------main logic---------------------------------*/
+int check_authority(Client *client) {
+    if (strcmp(client->command, "STOR") ||
+        strcmp(client->command, "QUIT") ||
+        strcmp(client->command, "SYST") ||
+        strcmp(client->command, "TYPE") ||
+        strcmp(client->command, "PORT") ||
+        strcmp(client->command, "PASV") ||
+        strcmp(client->command, "MKD") ||
+        strcmp(client->command, "CWD") ||
+        strcmp(client->command, "PWD") ||
+        strcmp(client->command, "LIST") ||
+        strcmp(client->command, "RMD") ||
+        strcmp(client->command, "RNFR") ||
+        strcmp(client->command, "RNTO")) {
+    }
+}
+
 void user(Client *client) {
-    if (client->state == CONNECT) {
+    if (client->state == CONNECT || client->state == USER) {
         if (!strcmp(client->argu, "anonymous")) {
             client->state = USER;
-            send_msg_to_client("331 Guest login ok, send your complete e-mail address as password.", client);
+            send_msg_to_client("331 Guest login ok, send your complete e-mail address as password.\r\n", client);
         } else {
-            //TODO:
-            send_msg_to_client("", client);
+            send_msg_to_client("504 Only support anonymous user.\r\n", client);
         }
+    } else if (client->state == DISCONNECT) {
+        send_msg_to_client("500 You are not connected.\r\n", client);
     } else {
-        //TODO: ?
+        send_msg_to_client("500 You are already logged in.\r\n", client);
     }
 }
 
 void pass(Client *client) {
     if (client->state == USER) {
         client->state = PASS;
-        send_msg_to_client("230 Login successful.", client);
+        send_msg_to_client("230 Login successful.\r\n", client);
     } else {
-        // TODO: ?
+        send_msg_to_client("500 PASS command should follow USER command.\r\n", client);
     }
+}
+
+void retr(Client *client) {
+}
+
+void stor(Client *client) {
+}
+
+void quit(Client *client) {
+}
+
+void syst(Client *client) {
+}
+
+void type(Client *client) {
+}
+
+void port(Client *client) {
+}
+
+void pasv(Client *client) {
+}
+
+void mkd(Client *client) {
+}
+
+void cwd(Client *client) {
+}
+
+void pwd(Client *client) {
+}
+
+void list(Client *client) {
+}
+
+void rmd(Client *client) {
+}
+
+void rnfr(Client *client) {
+}
+
+void rnto(Client *client) {
 }
 
 void listen_to_client(Client *client) {
     client->mode = CONNECT;
     send_msg_to_client("220 Anonymous FTP server ready.\r\n", client);
+
     while (1) {
         if (!receive_request_from_client(client)) {
             continue;
         }
+        if (!check_authority(client)) {
+            continue;
+        }
         if (!strcmp(client->command, "USER")) {
             user(client);
-        }
-        elif (!strcmp(client->command, "PASS")) {
+        } else if (!strcmp(client->command, "PASS")) {
             pass(client);
-        }
-        elif (!strcmp(client->command, "SYST")) {
+        } else if (!strcmp(client->command, "RETR")) {
+            retr(client);
+        } else if (!strcmp(client->command, "STOR")) {
+            stor(client);
+        } else if (!strcmp(client->command, "QUIT")) {
+            quit(client);
+        } else if (!strcmp(client->command, "SYST")) {
+            syst(client);
+        } else if (!strcmp(client->command, "TYPE")) {
+            type(client);
+        } else if (!strcmp(client->command, "PORT")) {
+            port(client);
+        } else if (!strcmp(client->command, "PASV")) {
+            pasv(client);
+        } else if (!strcmp(client->command, "MKD")) {
+            mkd(client);
+        } else if (!strcmp(client->command, "CWD")) {
+            cwd(client);
+        } else if (!strcmp(client->command, "PWD")) {
+            pwd(client);
+        } else if (!strcmp(client->command, "LIST")) {
+            list(client);
+        } else if (!strcmp(client->command, "RMD")) {
+            rmd(client);
+        } else if (!strcmp(client->command, "RNFR")) {
+            rnfr(client);
+        } else if (!strcmp(client->command, "RNTO")) {
+            rnto(client);
+        } else {
+            send_msg_to_client("502 unsupported parameters.\r\n", client);
         }
     }
 }
