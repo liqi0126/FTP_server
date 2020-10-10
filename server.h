@@ -7,7 +7,8 @@
 /*-------------------------------MARCO------------------------------------*/
 #define DEFAULT_PORT 21
 #define DEFAULT_ROOT_PATH "/tmp/"
-#define MAX_CONNECTION 100
+#define BACKLOG 5
+#define BUF_SIZE 8192
 
 
 /*-------------------------------STRUCT-----------------------------------*/
@@ -15,14 +16,14 @@ typedef struct Server {
     // basic config
     int port;
     char root_path[100];
-    // addr
     struct sockaddr_in addr;
     socklen_t addrlen;
-    int control_socket;      
+    int control_sockfd;      
 } Server;
 
 
 /*------------------------------FUNCTIONS---------------------------------*/
+// setup server
 int setup_server(int argc, char ** argv);
 int setup_root_and_port(int argc, char ** argv);
 

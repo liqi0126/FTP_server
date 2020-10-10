@@ -21,12 +21,18 @@ enum ClientMode {
 
 /*-------------------------------STRUCT-----------------------------------*/
 typedef struct Client {
+    // basic config
     struct sockaddr_in addr;
     socklen_t addrlen;
-    int control_socket;
+    int control_sockfd;
 
+    // status
     enum ClientState state;
     enum ClientMode mode;
+
+    // command
+    char command[100];
+    char argu[100];
 } Client;
 
 

@@ -22,6 +22,8 @@
 #include "server.h"
 #include "utils.h"
 
+
+/*--------------------------setup server---------------------------------*/
 int setup_server(int argc, char ** argv, Server *server) {
 	if (!setup_port_and_root(argc, argv, server)) {
 		return 0;
@@ -47,7 +49,7 @@ int setup_port_and_root(int argc, char ** argv, Server *server) {
 				return 0;
 			}
 			if (port > 65535) {
-				printf("Error: port number cannot be larger than 65535");
+				printf("Error: port number cannot be larger than 65535\n");
 				return 0;
 			}
 			server->port = port;
@@ -79,41 +81,64 @@ int setup_port_and_root(int argc, char ** argv, Server *server) {
 
 int setup_socket(Server *server) {
 	// create socket
-	// AF_INET for IPv4
-	// SOCK_STREAM for TCP
-	server->control_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (server->control_socket == -1) {
+	// AF_INET: Internet domain
+	// SOCK_STREAM: stream socket (a continuous stream, for TCP)
+	server->control_sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if (server->control_sockfd == -1) {
 		printf("Error: fail to setup socket, error msg: %s(%d)\n", strerror(errno), errno);
 		return 0;
 	}
 
 	// setup ip and port
 	server->addrlen = sizeof(server->addr);
-	memset(&server->addr, 0, server->addrlen);
+	memset(&server->addr, '\0', server->addrlen);
 	server->addr.sin_family = AF_INET;
 	server->addr.sin_port = htons(server->port);
-	server->addr.sin_addr.s_addr = htonl(INADDR_ANY);	// listen for "127.0.0.1"
+	server->addr.sin_addr.s_addr = htonl(INADDR_ANY);	// IP adress of the machine on which the server is running.
 
 	// bind socket with ip
-	if (bind(server->control_socket, (struct sockaddr*)&server->addr, server->addrlen) == -1) {
+	if (bind(server->control_sockfd, (struct sockaddr*)&server->addr, server->addrlen) == -1) {
 		printf("Error: fail to bind socket, error msg: %s(%d)\n", strerror(errno), errno);
 		return 0
 	}
 
 	// listen socket
-	if (listen(server->control_socket, MAX_CONNECTION) == -1) {
+	if (listen(server->control_sockfd, BACKLOG) == -1) {
 		printf("Error: fail to listen socket, error msg: %s(%d)\n", strerror(errno), errno);
 		return 0;
 	}
 	return 1;
 }
 
+/*--------------------------communicate with client---------------------------------*/
+void send_msg_to_client(char * buffer, Client * client) {
+	if (send(client->control_sockfd, buffer, strlen(buffer), 0) < 0) {
+		print("Error: fail to send msg to client.\n");
+	}
+}
 
+int receive_request_from_client(Client * client) {
+	char buf[BUF_SIZE];
+	memset(buf, '\0', sizeof(buf));
+	if (recv(client->control_sockfd, buf, BUF_SIZE, 0) < 0) {
+		printf("fail to receive msg from client.\n");
+		return 0;
+	}
+	sscanf(buf, "%s %s", client->command, client->argu);
+	return 1;
+}
+
+
+/*--------------------------main logic---------------------------------*/
 void listen_to_client(Client * client) {
-
+	client.mode = CONNECT;
+	send_msg_to_client("220 Anonymous FTP server ready.\r\n", client);
 	while (1)
 	{
-		/* code */
+		if (!receive_request_from_client(client)) {
+			continue;
+		}
+		
 	}
 }
 
@@ -126,23 +151,22 @@ int main(int argc, char **argv) {
 	while (1) {
 		Client client;
 		// waiting for client socket to connect
-		client.control_socket = accept(server.control_socket, &client.addr, &client.addrlen);
-		if (client.control_socket == -1) {
+		client.control_sockfd = accept(server.control_sockfd, &client.addr, &client.addrlen);
+		if (client.control_sockfd == -1) {
 			printf("Error: fail to connect client, error msg: %s(%d)\n", strerror(errno), errno);
 			return -1;
 		}
 		pid_t pid = fork();
 		if (pid == 0) {
-			client.mode = CONNECT;
-			// close(server.control_socket); ???
+			close(server.control_sockfd);
 			listen_to_client(&client);
-			close(client.control_socket);
+			close(client.control_sockfd);
 		} else if (pid < 0) {
-			perror("Error: failed forking processes");
+			perror("Error: failed forking processes\n");
 		}
-		close(client.control_socket);
+		close(client.control_sockfd);
 	}
-	close(server.control_socket);
+	close(server.control_sockfd);
 	return 0;
 }
 
