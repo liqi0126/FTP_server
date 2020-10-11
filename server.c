@@ -1,3 +1,4 @@
+
 #include "server.h"
 
 #include <arpa/inet.h>
@@ -20,136 +21,13 @@
 #include "client.h"
 #include "utils.h"
 
-/*--------------------------setup server---------------------------------*/
-int setup_server(int argc, char **argv, Server *server) {
-    if (!setup_port_and_root(argc, argv, server)) {
-        return 0;
-    }
-    if (!setup_socket(server)) {
-        return 0;
-    }
-    return 1;
-}
-
-int setup_port_and_root(int argc, char **argv, Server *server) {
-    // setup port
-    server->port = DEFAULT_PORT;
-    for (int i = 0; i < argc; i++) {
-        if (!strcmp(argv[i], "-port")) {
-            if (i + 1 >= argc) {
-                printf("Error: parameter for port not found\n");
-                return 0;
-            }
-            int port = atoi(argv[i + 1]);
-            if (!port) {
-                printf("Error: wrong format for port number\n");
-                return 0;
-            }
-            if (port > 65535) {
-                printf("Error: port number cannot be larger than 65535\n");
-                return 0;
-            }
-            server->port = port;
-            break;
-        }
-    }
-
-    // setup root
-    strcpy(server->root_path, DEFAULT_ROOT_PATH);
-    for (int i = 0; i < argc; i++) {
-        if (!strcmp(argv[i], "-root")) {
-            if (i + 1 >= argc) {
-                printf("Error: parameter for root not found\n");
-                return 0;
-            }
-            strcpy(server->root_path, argv[i + 1]);
-            DIR *dir = opendir(server->root_path);
-            if (dir) {
-                closedir(dir);
-            } else {
-                printf("Error: open directory %s failed\n", server->root_path);
-                return 0;
-            }
-            break;
-        }
-    }
-    return 1;
-}
-
-int setup_socket(Server *server) {
-    // create socket
-    // AF_INET: Internet domain
-    // SOCK_STREAM: stream socket (a continuous stream, for TCP)
-    server->control_sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server->control_sockfd == -1) {
-        printf("Error: fail to setup socket, error msg: %s(%d)\n", strerror(errno), errno);
-        return 0;
-    }
-
-    // setup ip and port
-    server->addrlen = sizeof(server->addr);
-    memset(&server->addr, '\0', server->addrlen);
-    server->addr.sin_family = AF_INET;
-    server->addr.sin_port = htons(server->port);
-    server->addr.sin_addr.s_addr = htonl(INADDR_ANY);  // IP adress of the machine on which the server is running.
-
-    // bind socket with ip
-    if (bind(server->control_sockfd, (struct sockaddr *)&server->addr, server->addrlen) == -1) {
-        printf("Error: fail to bind socket, error msg: %s(%d)\n", strerror(errno), errno);
-        return 0;
-    }
-
-    // listen socket
-    if (listen(server->control_sockfd, BACKLOG) == -1) {
-        printf("Error: fail to listen socket, error msg: %s(%d)\n", strerror(errno), errno);
-        return 0;
-    }
-    return 1;
-}
-
-/*--------------------------communicate with client---------------------------------*/
-void send_msg_to_client(char *buffer, Client *client) {
-    if (send(client->control_sockfd, buffer, strlen(buffer), 0) < 0) {
-        print("Error: fail to send msg to client.\n");
-    }
-}
-
-int receive_request_from_client(Client *client) {
-    char buf[BUF_SIZE];
-    memset(buf, '\0', sizeof(buf));
-    if (recv(client->control_sockfd, buf, BUF_SIZE, 0) < 0) {
-        printf("fail to receive msg from client.\n");
-        return 0;
-    }
-    sscanf(buf, "%s %s", client->command, client->argu);  // TODO: check correctness
-    return 1;
-}
-
-/*--------------------------main logic---------------------------------*/
-int check_authority(Client *client) {
-    if (strcmp(client->command, "STOR") ||
-        strcmp(client->command, "QUIT") ||
-        strcmp(client->command, "SYST") ||
-        strcmp(client->command, "TYPE") ||
-        strcmp(client->command, "PORT") ||
-        strcmp(client->command, "PASV") ||
-        strcmp(client->command, "MKD") ||
-        strcmp(client->command, "CWD") ||
-        strcmp(client->command, "PWD") ||
-        strcmp(client->command, "LIST") ||
-        strcmp(client->command, "RMD") ||
-        strcmp(client->command, "RNFR") ||
-        strcmp(client->command, "RNTO")) {
-    }
-}
-
 void user(Client *client) {
     if (client->state == CONNECT || client->state == USER) {
         if (!strcmp(client->argu, "anonymous")) {
             client->state = USER;
             send_msg_to_client("331 Guest login ok, send your complete e-mail address as password.\r\n", client);
         } else {
-            send_msg_to_client("504 Only support anonymous user.\r\n", client);
+            send_msg_to_client("530 Only support anonymous user.\r\n", client);
         }
     } else if (client->state == DISCONNECT) {
         send_msg_to_client("500 You are not connected.\r\n", client);
@@ -167,50 +45,394 @@ void pass(Client *client) {
     }
 }
 
+void retr_port(Client *client) {
+    struct sockaddr_in addr;
+    if (!setup_addr(&addr, client->file_addr, client->file_port)) {
+        return;
+    }
+    if (!setup_connect_socket(&client->file_sockfd, &addr)) {
+        return;
+    }
+
+    char file_path[BUF_SIZE];
+    memset(file_path, 0, BUF_SIZE);
+    strcpy(file_path, client->cur_path);
+    strcat(file_path, client->argu);
+    int size = get_file_size(file_path);
+
+    char buf[BUF_SIZE];
+    if (size <= 0) {
+        memset(buf, 0, BUF_SIZE);
+        sprintf(buf, "500 file %s not found.\r\n", client->argu);
+        send_msg_to_client(buf, client);
+        return;
+    }
+
+    memset(buf, 0, BUF_SIZE);
+    sprintf(buf, "150 Opening BINARY mode data connection for %s (%d)\r\n", client->argu, size);
+    send_msg_to_client(buf, client);
+
+    int total = send_file(client->file_sockfd, file_path, client->offset);
+    if (total <= 0) {
+        memset(buf, 0, BUF_SIZE);
+        sprintf(buf, "500 fail to send %s\r\n", client->argu);
+        send_msg_to_client(buf, client);
+        return;
+    }
+    client->sent_bytes += total;
+    client->sent_files += 1;
+
+    send_msg_to_client("226 Transfer complete.\r\n", client);
+}
+
+void retr_pasv(Client *client) {
+    int sockfd = accept(client->file_sockfd, NULL, NULL);
+    if (sockfd == -1) {
+        send_msg_to_client("500 fail to connect client socket.\r\n", client);
+        return;
+    }
+    char file_path[BUF_SIZE];
+    path_concat(file_path, client->cur_path, client->argu);
+
+    int size = get_file_size(file_path);
+
+    char buf[BUF_SIZE];
+    if (size <= 0) {
+        memset(buf, 0, BUF_SIZE);
+        sprintf(buf, "500 file %s not found.\r\n", client->argu);
+        send_msg_to_client(buf, client);
+        return;
+    }
+
+    memset(buf, 0, BUF_SIZE);
+    sprintf(buf, "150 Opening BINARY mode data connection for %s (%d)\r\n", client->argu, size);
+    send_msg_to_client(buf, client);
+
+    int total = send_file(sockfd, file_path, client->offset);
+    if (total <= 0) {
+        memset(buf, 0, BUF_SIZE);
+        sprintf(buf, "500 fail to send %s\r\n", client->argu);
+        send_msg_to_client(buf, client);
+        return;
+    }
+    client->sent_bytes += total;
+    client->sent_files += 1;
+
+    send_msg_to_client("226 Transfer complete.\r\n", client);
+    close(sockfd);
+}
+
 void retr(Client *client) {
+    if (client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 require PORT/PASV mode.\r\n", client);
+        return;
+    }
+    if (client->state == PORT) {
+        retr_port(client);
+    } else {
+        retr_pasv(client);
+    }
+}
+
+void stor_port(Client *client) {
+    struct sockaddr_in addr;
+    if (!setup_addr(&addr, client->file_addr, client->file_port)) {
+        return;
+    }
+    if (!setup_connect_socket(&client->file_sockfd, &addr)) {
+        return;
+    }
+
+    char file_path[BUF_SIZE];
+    path_concat(file_path, client->cur_path, client->argu);
+
+    char buf[BUF_SIZE];
+    memset(buf, 0, BUF_SIZE);
+    sprintf(buf, "150 Opening BINARY mode data connection for %s (%d)\r\n", client->argu, size);
+    send_msg_to_client(buf, client);
+
+    int total = receive_file(client->file_sockfd, file_path);
+    if (total <= 0) {
+        memset(buf, 0, BUF_SIZE);
+        sprintf(buf, "500 fail to receive %s\r\n", client->argu);
+        send_msg_to_client(buf, client);
+        return;
+    }
+
+    send_msg_to_client("226 Transfer complete.\r\n", client);
+}
+
+void stor_pasv(Client *client) {
+    int sockfd = accept(client->file_sockfd, NULL, NULL);
+    if (sockfd == -1) {
+        send_msg_to_client("500 fail to connect client socket.\r\n", client);
+    }
+
+    char file_path[BUF_SIZE];
+    path_concat(file_path, client->cur_path, client->argu);
+
+    char buf[BUF_SIZE];
+    memset(buf, 0, BUF_SIZE);
+    sprintf(buf, "150 Opening BINARY mode data connection for %s.\r\n", client->argu);
+    send_msg_to_client(buf, client);
+    int total = receive_file(sockfd, file_path);
+    if (total <= 0) {
+        memset(buf, 0, BUF_SIZE);
+        sprintf(buf, "500 fail to receive %s\r\n", client->argu);
+        send_msg_to_client(buf, client);
+        return;
+    }
+
+    send_msg_to_client("226 Transfer complete.\r\n", client);
+    close(sockfd);
 }
 
 void stor(Client *client) {
+    if (client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 require PORT/PASV mode.\r\n", client);
+        return;
+    }
+    if (client->state == PORT) {
+        stor_port(client);
+    } else {
+        stor_pasv(client);
+    }
 }
 
 void quit(Client *client) {
+    char buf[BUF_SIZE];
+    memset(buf, 0, BUF_SIZE);
+    sprintf(buf, "221-You have transferred %d bytes in %d files.", client->sent_bytes, client->sent_files);
+    strcat(buf, "221-Thank you for using the FTP service.\r\n");
+    strcat(buf, "221 Goodbye.\r\n");
+    send_msg_to_client(buf, client);
 }
 
 void syst(Client *client) {
+    if (client->state != PASS && client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 you haven't login in.\r\n", client);
+        return;
+    }
+    send_msg_to_client("215 UNIX Type: L8\r\n");
 }
 
 void type(Client *client) {
+    if (client->state != PASS && client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 you haven't login in.\r\n", client);
+        return;
+    }
+    if (!strcmp(client->argu, "I")) {
+        send_msg_to_client("200 Type set to I.\r\n", client);
+    } else {
+        send_msg_to_client("500 Only Type I is supported", client);
+    }
 }
 
 void port(Client *client) {
+    if (client->state != PASS && client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 you haven't login in.\r\n", client);
+        return;
+    }
+    if (parse_addr_and_port(client->argu, client->file_addr, &client->file_port)) {
+        client->state = PORT;
+        send_msg_to_client("200 PORT command succesful.\r\n", client);
+    } else {
+        send_msg_to_client("504 unsupported parameter.\r\n", client);
+    }
 }
 
 void pasv(Client *client) {
+    if (client->state != PASS && client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 you haven't login in.\r\n", client);
+        return;
+    }
+    if (!get_host_ip(client->file_addr)) {
+        send_msg_to_client("500 fail to get host ip.\r\n", client);
+        return;
+    }
+    client->file_port = gen_random_port();
+    struct sockaddr_in addr;
+    setup_local_addr(&addr, client->file_port);
+    if (!setup_listen_socket(&client->file_sockfd, &addr)) {
+        send_msg_to_client("500 fail to setup file socket.\r\n", client);
+        return;
+    }
+    char param[100];
+    decorate_addr_and_port(param, client->file_addr, client->file_port);
+    char buf[BUF_SIZE];
+    memset(buf, 0, BUF_SIZE);
+    sprintf(buf, "227 Entering Passive mode(%s)", param);
+    send_msg_to_client(buf, client);
 }
 
 void mkd(Client *client) {
+    if (client->state != PASS && client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 you haven't login in.\r\n", client);
+        return;
+    }
+    char new_dir[BUF_SIZE];
+    path_concat(new_dir, client->cur_path, client->argu);
+    char buf[BUF_SIZE];
+    memset(buf, 0, BUF_SIZE);
+    if (mkdir(new_dir, 0700) == 0) {
+        sprintf(buf, "257 \"%s\" created.\r\n", new_dir);
+    } else {
+        sprintf(buf, "550 \"%s\" create failed.\r\n", new_dir);
+    }
+    send_msg_to_client(buf, client);
 }
 
 void cwd(Client *client) {
+    if (client->state != PASS && client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 you haven't login in.\r\n", client);
+        return;
+    }
+    DIR *dir = opendir(client->argu);
+    if (dir) {
+        closedir(dir);
+        strcpy(client->cur_path, client->argu);
+        send_msg_to_client("250 Okay.\r\n", client);
+    } else {
+        char *buf[BUF_SIZE];
+        memset(buf, 0, strlen(buf));
+        sprintf(buf, "550 %s: No such file or directory.\r\n", client->argu);
+        send_msg_to_client(buf, client);
+    }
 }
 
 void pwd(Client *client) {
+    if (client->state != PASS && client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 you haven't login in.\r\n", client);
+        return;
+    }
+    char buf[BUF_SIZE];
+    memset(buf, 0, BUF_SIZE);
+    sprintf(buf, "257 \"%s\"\r\n", client->cur_path);
+    send_msg_to_client(buf, client);
+}
+
+void list_port(Client *client) {
+    struct sockaddr_in addr;
+    if (!setup_addr(&addr, client->file_addr, client->file_port)) {
+        return;
+    }
+    if (!setup_connect_socket(&client->file_sockfd, &addr)) {
+        return;
+    }
+
+    system("ls -l | tail +1 > ls.txt");
+    char ls_path[BUF_SIZE];
+    path_concat(ls_path, client->cur_path, "ls.txt");
+
+    send_msg_to_client("150 Opening BINARY mode data connection.\r\n", client);
+
+    int total = send_file(client->file_sockfd, ls_path, 0);
+    if (total <= 0) {
+        send_msg_to_client("500 fail to send file lists.\r\n", client);
+        return;
+    }
+    send_msg_to_client("226 Transfer complete.\r\n", client);
+}
+
+void list_pasv(Client *client) {
+    int sockfd = accept(client->file_sockfd, NULL, NULL);
+    if (sockfd == -1) {
+        send_msg_to_client("500 fail to connect client socket.\r\n", client);
+        return;
+    }
+
+    system("ls -l | tail +1 > ls.txt");
+    char ls_path[BUF_SIZE];
+    path_concat(ls_path, client->cur_path, "ls.txt");
+
+    send_msg_to_client("150 Opening BINARY mode data connection.\r\n", client);
+
+    int total = send_file(sockfd, file_path, 0);
+    if (total <= 0) {
+        send_msg_to_client("500 fail to send file lists.\r\n", client);
+        return;
+    }
+    send_msg_to_client("226 Transfer complete.\r\n", client);
+    close(sockfd);
 }
 
 void list(Client *client) {
+    if (client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 require PORT/PASV mode.\r\n", client);
+        return;
+    }
+
+    if (client->state == PORT) {
+        list_port(client);
+    } else {
+        list_pasv(client);
+    }
 }
 
 void rmd(Client *client) {
+    if (client->state != PASS && client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 you haven't login in.\r\n", client);
+        return;
+    }
+    char path[BUF_SIZE];
+    path_concat(path, client->cur_path, client->argu);
+
+    char buf[BUF_SIZE];
+    memset(buf, 0, BUF_SIZE);
+    if (rmdir(path) == 0) {
+        sprintf(buf, "250 %s directory removed.\r\n", path);
+    } else {
+        sprintf(buf, "500 remove %s failed.\r\n", path);
+    }
+    send_msg_to_client(buf, client);
 }
 
 void rnfr(Client *client) {
+    if (client->state != PASS && client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 you haven't login in.\r\n", client);
+        return;
+    }
+    path_concat(client->src_file, client->cur_path, client->argu);
+    if (access(client->src_file, F_OK) == -1) {
+        char buf[BUF_SIZE];
+        memset(buf, 0, BUF_SIZE);
+        sprintf(buf, "500 no such a file.\r\n");
+        send_msg_to_client(buf, client);
+        return;
+    }
+    send_msg_to_client("350 please specify the destination file name.\r\n", client);
 }
 
 void rnto(Client *client) {
+    if (client->state != PASS && client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 you haven't login in.\r\n", client);
+        return;
+    }
+    if (strlen(client->argu) == 0) {
+        send_msg_to_client("501 file name cannot be empty.\r\n", client);
+        return;
+    }
+    if (strlen(client->src_file) == 0) {
+        send_msg_to_client("500 you need to specify the source file name first.\r\n", client);
+        return;
+    }
+    path_concat(client->dst_file, client->cur_path, client->argu);
+
+    char buf[BUF_SIZE];
+    memset(buf, 0, BUF_SIZE);
+    if (rename(client->src_file, client->dst_file) != 0) {
+        sprintf(buf, "502 fail to rename file from %s to %s.\r\n", client->src_file, client->dst_file);
+        send_msg_to_client(buf, client);
+        return;
+    }
+
+    sprintf(buf, "250 file rename from %s to %s.\r\n", client->src_file, client->dst_file);
+    send_msg_to_client(buf, client);
+    memset(client->src_file, 0, strlen(client->src_file));
+    memset(client->dst_file, 0, strlen(client->dst_file));
 }
 
 void listen_to_client(Client *client) {
-    client->mode = CONNECT;
     send_msg_to_client("220 Anonymous FTP server ready.\r\n", client);
 
     while (1) {
@@ -230,6 +452,10 @@ void listen_to_client(Client *client) {
             stor(client);
         } else if (!strcmp(client->command, "QUIT")) {
             quit(client);
+            break;
+        } else if (!strcmp(client->command, "ABOR")) {
+            quit(client);
+            break;
         } else if (!strcmp(client->command, "SYST")) {
             syst(client);
         } else if (!strcmp(client->command, "TYPE")) {
@@ -274,6 +500,15 @@ int main(int argc, char **argv) {
         }
         pid_t pid = fork();
         if (pid == 0) {
+            // set up client
+            client.mode = CONNECT;
+            memset(client.src_file, 0, strlen(client.src_file));
+            memset(client.dst_file, 0, strlen(client.dst_file));
+            strcpy(client.cur_path, server.root_path);
+            client.offset = 0;
+            client.sent_bytes = 0;
+            client.sent_files = 0;
+
             close(server.control_sockfd);
             listen_to_client(&client);
             close(client.control_sockfd);

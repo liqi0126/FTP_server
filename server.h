@@ -16,17 +16,31 @@ typedef struct Server {
     int port;
     char root_path[100];
     struct sockaddr_in addr;
-    socklen_t addrlen;
     int control_sockfd;
 } Server;
 
 /*------------------------------FUNCTIONS---------------------------------*/
-// setup server
-int setup_server(int argc, char **argv, Server *server);
-int setup_port_and_root(int argc, char **argv, Server *server);
-int setup_socket(Server *server);
-// communicate with client
-void send_msg_to_client(char *buffer, Client *client);
-int receive_request_from_client(Client *client);
-
+void user(Client *client);
+void pass(Client *client);
+void retr_port(Client *client);
+void retr_pasv(Client *client);
+void retr(Client *client);
+void stor_port(Client *client);
+void stor_pasv(Client *client);
+void stor(Client *client);
+void quit(Client *client);
+void syst(Client *client);
+void type(Client *client);
+void port(Client *client);
+void pasv(Client *client);
+void mkd(Client *client);
+void cwd(Client *client);
+void pwd(Client *client);
+void list_port(Client *client);
+void list_pasv(Client *client);
+void list(Client *client);
+void rmd(Client *client);
+void rnfr(Client *client);
+void rnto(Client *client);
+void listen_to_client(Client *client);
 #endif
