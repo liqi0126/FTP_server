@@ -101,6 +101,7 @@ void retr_pasv(Client *client) {
         memset(buf, 0, BUF_SIZE);
         sprintf(buf, "500 file %s not found.\r\n", client->argu);
         send_msg_to_client(buf, client);
+        close(sockfd);
         return;
     }
 
@@ -113,6 +114,7 @@ void retr_pasv(Client *client) {
         memset(buf, 0, BUF_SIZE);
         sprintf(buf, "500 fail to send %s\r\n", client->argu);
         send_msg_to_client(buf, client);
+        close(sockfd);
         return;
     }
     client->sent_bytes += total;
@@ -132,6 +134,8 @@ void retr(Client *client) {
     } else {
         retr_pasv(client);
     }
+    close(client->file_sockfd);
+    client->state = PASS;
 }
 
 void stor_port(Client *client) {
@@ -180,11 +184,12 @@ void stor_pasv(Client *client) {
         memset(buf, 0, BUF_SIZE);
         sprintf(buf, "500 fail to receive %s\r\n", client->argu);
         send_msg_to_client(buf, client);
+        close(sockfd);
         return;
     }
 
-    send_msg_to_client("226 Transfer complete.\r\n", client);
     close(sockfd);
+    send_msg_to_client("226 Transfer complete.\r\n", client);
 }
 
 void stor(Client *client) {
@@ -197,6 +202,8 @@ void stor(Client *client) {
     } else {
         stor_pasv(client);
     }
+    close(client->file_sockfd);
+    client->state = PASS;
 }
 
 void quit(Client *client) {
@@ -350,6 +357,7 @@ void list_pasv(Client *client) {
     int total = send_file(sockfd, ls_path, 0);
     if (total <= 0) {
         send_msg_to_client("500 fail to send file lists.\r\n", client);
+        close(sockfd);
         return;
     }
     send_msg_to_client("226 Transfer complete.\r\n", client);
@@ -367,6 +375,8 @@ void list(Client *client) {
     } else {
         list_pasv(client);
     }
+    close(client->file_sockfd);
+    client->state = PASS;
 }
 
 void rmd(Client *client) {
