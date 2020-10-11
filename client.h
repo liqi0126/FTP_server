@@ -1,9 +1,9 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-
 /*-------------------------------MARCO------------------------------------*/
 
 enum ClientState {
@@ -11,8 +11,8 @@ enum ClientState {
     CONNECT,
     USER,
     PASS,
-    PORT;
-    PASV;
+    PORT,
+    PASV
 };
 
 /*-------------------------------STRUCT-----------------------------------*/

@@ -1,8 +1,11 @@
 #ifndef SERVER_H
 #define SERVER_H
 
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+
+#include "client.h"
 
 /*-------------------------------MARCO------------------------------------*/
 #define DEFAULT_PORT 21

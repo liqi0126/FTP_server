@@ -148,7 +148,7 @@ void stor_port(Client *client) {
 
     char buf[BUF_SIZE];
     memset(buf, 0, BUF_SIZE);
-    sprintf(buf, "150 Opening BINARY mode data connection for %s (%d)\r\n", client->argu, size);
+    sprintf(buf, "150 Opening BINARY mode data connection for %s\r\n", client->argu);
     send_msg_to_client(buf, client);
 
     int total = receive_file(client->file_sockfd, file_path);
@@ -213,7 +213,7 @@ void syst(Client *client) {
         send_msg_to_client("530 you haven't login in.\r\n", client);
         return;
     }
-    send_msg_to_client("215 UNIX Type: L8\r\n");
+    send_msg_to_client("215 UNIX Type: L8\r\n", client);
 }
 
 void type(Client *client) {
@@ -293,8 +293,8 @@ void cwd(Client *client) {
         strcpy(client->cur_path, client->argu);
         send_msg_to_client("250 Okay.\r\n", client);
     } else {
-        char *buf[BUF_SIZE];
-        memset(buf, 0, strlen(buf));
+        char buf[BUF_SIZE];
+        memset(buf, 0, BUF_SIZE);
         sprintf(buf, "550 %s: No such file or directory.\r\n", client->argu);
         send_msg_to_client(buf, client);
     }
@@ -347,7 +347,7 @@ void list_pasv(Client *client) {
 
     send_msg_to_client("150 Opening BINARY mode data connection.\r\n", client);
 
-    int total = send_file(sockfd, file_path, 0);
+    int total = send_file(sockfd, ls_path, 0);
     if (total <= 0) {
         send_msg_to_client("500 fail to send file lists.\r\n", client);
         return;
@@ -439,9 +439,6 @@ void listen_to_client(Client *client) {
         if (!receive_request_from_client(client)) {
             continue;
         }
-        if (!check_authority(client)) {
-            continue;
-        }
         if (!strcmp(client->command, "USER")) {
             user(client);
         } else if (!strcmp(client->command, "PASS")) {
@@ -493,7 +490,8 @@ int main(int argc, char **argv) {
     while (1) {
         Client client;
         // waiting for client socket to connect
-        client.control_sockfd = accept(server.control_sockfd, &client.addr, &client.addrlen);
+        unsigned int addrlen;
+        client.control_sockfd = accept(server.control_sockfd, (struct sockaddr *)&client.addr, &addrlen);
         if (client.control_sockfd == -1) {
             printf("Error: fail to connect client, error msg: %s(%d)\n", strerror(errno), errno);
             return -1;
@@ -501,7 +499,6 @@ int main(int argc, char **argv) {
         pid_t pid = fork();
         if (pid == 0) {
             // set up client
-            client.mode = CONNECT;
             memset(client.src_file, 0, strlen(client.src_file));
             memset(client.dst_file, 0, strlen(client.dst_file));
             strcpy(client.cur_path, server.root_path);

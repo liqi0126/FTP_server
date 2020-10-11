@@ -5,6 +5,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <memory.h>
 #include <net/if.h>
 #include <netdb.h>
@@ -21,13 +22,21 @@
 #include "client.h"
 #include "server.h"
 
+#define DEBUG
+
 /*--------------------------setup server---------------------------------*/
 int setup_server(int argc, char **argv, Server *server) {
     if (!parse_port_and_root(argc, argv, server)) {
         return 0;
     }
+
+#ifdef DEBUG
+    printf("port: %d\n", server->port);
+    printf("root: %s\n", server->root_path);
+#endif
+
     setup_local_addr(&server->addr, server->port);
-    if (!setup_listen_socket(&server->control_sockfd, &server->addr)) {
+    if (!setup_listen_socket(&server->control_sockfd, server->addr)) {
         return 0;
     }
     return 1;
@@ -80,13 +89,13 @@ int parse_port_and_root(int argc, char **argv, Server *server) {
 
 void setup_local_addr(struct sockaddr_in *addr, int port) {
     // setup ip and port
-    memset(addr, '\0', sizeof(addr));
+    memset(addr, '\0', sizeof(&addr));
     addr->sin_family = AF_INET;
     addr->sin_port = htons(port);
     addr->sin_addr.s_addr = htonl(INADDR_ANY);  // IP adress of the machine on which the server is running.
 }
 
-int setup_listen_socket(int *sockfd, struct sockaddr_in *addr) {
+int setup_listen_socket(int *sockfd, struct sockaddr_in addr) {
     // create socket
     // AF_INET: Internet domain
     // SOCK_STREAM: stream socket (a continuous stream, for TCP)
@@ -97,7 +106,7 @@ int setup_listen_socket(int *sockfd, struct sockaddr_in *addr) {
     }
 
     // bind socket with ip
-    if (bind(*sockfd, (struct sockaddr *)addr, sizeof(addr)) == -1) {
+    if (bind(*sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
         printf("Error: fail to bind socket, error msg: %s(%d)\n", strerror(errno), errno);
         return 0;
     }
@@ -110,9 +119,9 @@ int setup_listen_socket(int *sockfd, struct sockaddr_in *addr) {
     return 1;
 }
 
-int setup_addr(strcut sockaddr_in *addr, char *ip, int port) {
+int setup_addr(struct sockaddr_in *addr, char *ip, int port) {
     // setup ip and port
-    memset(addr, '\0', sizeof(addr));
+    memset(addr, '\0', sizeof(&addr));
     addr->sin_family = AF_INET;
     addr->sin_port = htons(port);
     if (inet_pton(AF_INET, ip, &addr->sin_addr) <= 0) {
@@ -136,6 +145,7 @@ int setup_connect_socket(int *sockfd, struct sockaddr_in *addr) {
         printf("Error: fail to connect, error msg: %s(%d)\n", strerror(errno), errno);
         return 0;
     }
+    return 1;
 }
 
 /*--------------------------communicate with client---------------------------------*/
@@ -227,11 +237,11 @@ int check_addr_and_port_by_ip(char *ip, int port) {
 int parse_addr_and_port(char *param, char *addr, int *port) {
     int h1 = -1, h2 = -1, h3 = -1, h4 = -1, p1 = -1, p2 = -1;
     sscanf(param, "%d,%d,%d,%d,%d,%d", &h1, &h2, &h3, &h4, &p1, &p2);
-    if (!valid_addr_and_port_by_hp(h1, h2, h3, h4, p1, h2)) {
+    if (!check_addr_and_port_by_hp(h1, h2, h3, h4, p1, h2)) {
         return 0;
     } else {
         sprintf(addr, "%d.%d.%d.%d", h1, h2, h3, h4);
-        *port = p1 << 8 + p2;
+        *port = (p1 << 8) + p2;
         return 1;
     }
 }
@@ -241,7 +251,7 @@ int decorate_addr_and_port(char *param, char *addr, int port) {
     sscanf(addr, "%d.%d.%d.%d", &h1, &h2, &h3, &h4);
     p1 = port / 256;
     p2 = port % 256;
-    if (!valid_addr_and_port_by_hp(h1, h2, h3, h4, p1, h2)) {
+    if (!check_addr_and_port_by_hp(h1, h2, h3, h4, p1, h2)) {
         return 0;
     } else {
         sprintf(param, "%d,%d,%d,%d,%d,%d", h1, h2, h3, h4, p1, p2);
@@ -273,7 +283,7 @@ int get_host_ip(char *ip) {
 
 int gen_random_port() {
     // [0, at least 65536 (2^16))
-    int port = rand() << 1 + rand() % 2;
+    int port = (rand() << 1) + rand() % 2;
     // [0, 45536)
     port = port % 45536;
     // [20000, 65536)

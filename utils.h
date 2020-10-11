@@ -9,7 +9,7 @@
 int setup_server(int argc, char **argv, Server *server);
 int parse_port_and_root(int argc, char **argv, Server *server);
 void setup_local_addr(struct sockaddr_in *addr, int port);
-int setup_listen_socket(int *sockfd, struct sockaddr_in *addr);
+int setup_listen_socket(int *sockfd, struct sockaddr_in addr);
 int setup_addr(struct sockaddr_in *addr, char *ip, int port);
 int setup_connect_socket(int *sockfd, struct sockaddr_in *addr);
 // communicate with client
