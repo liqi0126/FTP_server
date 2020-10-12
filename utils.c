@@ -22,18 +22,11 @@
 #include "client.h"
 #include "server.h"
 
-#define DEBUG
-
 /*--------------------------setup server---------------------------------*/
 int setup_server(int argc, char **argv, Server *server) {
     if (!parse_port_and_root(argc, argv, server)) {
         return 0;
     }
-
-#ifdef DEBUG
-    printf("port: %d\n", server->port);
-    printf("root: %s\n", server->root_path);
-#endif
 
     setup_local_addr(&server->addr, server->port);
     if (!setup_listen_socket(&server->control_sockfd, server->addr)) {
@@ -130,7 +123,7 @@ int setup_addr(struct sockaddr_in *addr, char *ip, int port) {
     return 1;
 }
 
-int setup_connect_socket(int *sockfd, struct sockaddr_in *addr) {
+int setup_connect_socket(int *sockfd, struct sockaddr_in addr) {
     // create socket
     // AF_INET: Internet domain
     // SOCK_STREAM: stream socket (a continuous stream, for TCP)
@@ -141,7 +134,7 @@ int setup_connect_socket(int *sockfd, struct sockaddr_in *addr) {
     }
 
     // connect socket
-    if (connect(*sockfd, (struct sockaddr *)addr, sizeof(addr)) == -1) {
+    if (connect(*sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
         printf("Error: fail to connect, error msg: %s(%d)\n", strerror(errno), errno);
         return 0;
     }
@@ -291,10 +284,12 @@ int gen_random_port() {
     return port;
 }
 
+void print_ip_and_port(struct sockaddr_in addr) {
+    printf("(%s:%d) ", inet_ntoa(addr.sin_addr), htons(addr.sin_port));
+}
 /*---------------------------File related--------------------------------*/
 
 void path_concat(char *new_path, char *cur_path, char *next_path) {
-    memset(new_path, 0, strlen(new_path));
     strcpy(new_path, cur_path);
     if (new_path[strlen(new_path) - 1] != '/') {
         strcat(new_path, "/");
