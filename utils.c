@@ -150,22 +150,24 @@ int receive_request_from_client(Client *client) {
         printf("fail to receive msg from client.\n");
         return 0;
     }
-    sscanf(buf, "%s %s", client->command, client->argu);  // TODO: check correctness
+    sscanf(buf, "%s %s", client->command, client->argu);
     return 1;
 }
 
 void send_msg_to_client(char *buffer, Client *client) {
+    int len = strlen(buffer);
+    if (buffer[len - 1] != '\n' || buffer[len - 2] != '\r') {
+        strcat(buffer, "\r\n");
+    }
     if (send(client->control_sockfd, buffer, strlen(buffer), 0) < 0) {
         printf("Error: fail to send msg to client.\n");
     }
 }
 
-int send_file(int sockfd, char *file_path, int offset) {
-    FILE *fp = fopen(file_path, "rb");
-
+int send_file(int sockfd, FILE *fp, int offset) {
     if (!fp) {
         printf("Error: cannot open file\n");
-        return 0;
+        return -1;
     }
 
     if (offset > 0) {
@@ -186,12 +188,19 @@ int send_file(int sockfd, char *file_path, int offset) {
     return total;
 }
 
-int receive_file(int sockfd, char *file_path) {
-    FILE *fp = fopen(file_path, "wb");
+int send_file_by_path(int sockfd, char *file_path, int offset) {
+    FILE *fp = fopen(file_path, "rb");
+    return send_file(sockfd, fp, offset);
+}
 
+int receive_file(int sockfd, FILE *fp, int offset) {
     if (!fp) {
         printf("Error: cannot open file\n");
-        return 0;
+        return -1;
+    }
+
+    if (offset > 0) {
+        fseek(fp, offset, SEEK_SET);
     }
 
     char buf[BUF_SIZE];
@@ -203,11 +212,22 @@ int receive_file(int sockfd, char *file_path) {
         size = recv(sockfd, buf, BUF_SIZE, 0);
         total += size;
     }
+    fclose(fp);
     return total;
 }
 
+int receive_file_by_path(int sockfd, char *file_path, int offset) {
+    FILE *fp = NULL;
+    if (offset > 0) {
+        fp = fopen(file_path, "r+");
+    } else {
+        fp = fopen(file_path, "w");
+    }
+    return receive_file(sockfd, fp, offset);
+}
+
 /*---------------------------IP related--------------------------------*/
-int check_addr_and_port_by_hp(int h1, int h2, int h3, int h4, int p1, int p2) {
+int check_ip_and_port_by_hp(int h1, int h2, int h3, int h4, int p1, int p2) {
     if ((h1 < 0 || h1 > 255) ||
         (h2 < 0 || h2 > 255) ||
         (h3 < 0 || h3 > 255) ||
@@ -219,37 +239,56 @@ int check_addr_and_port_by_hp(int h1, int h2, int h3, int h4, int p1, int p2) {
     return 1;
 }
 
-int check_addr_and_port_by_ip(char *ip, int port) {
+int check_ip_and_port_by_ip(char *ip, int port) {
     int h1 = -1, h2 = -1, h3 = -1, h4 = -1, p1 = -1, p2 = -1;
     sscanf(ip, "%d.%d.%d.%d", &h1, &h2, &h3, &h4);
     p1 = port / 256;
     p2 = port % 256;
-    return check_addr_and_port_by_hp(h1, h2, h3, h4, p1, p2);
+    return check_ip_and_port_by_hp(h1, h2, h3, h4, p1, p2);
 }
 
-int parse_addr_and_port(char *param, char *addr, int *port) {
+int parse_ip_and_port(char *param, char *ip, int *port) {
     int h1 = -1, h2 = -1, h3 = -1, h4 = -1, p1 = -1, p2 = -1;
     sscanf(param, "%d,%d,%d,%d,%d,%d", &h1, &h2, &h3, &h4, &p1, &p2);
-    if (!check_addr_and_port_by_hp(h1, h2, h3, h4, p1, h2)) {
+    if (!check_ip_and_port_by_hp(h1, h2, h3, h4, p1, h2)) {
         return 0;
     } else {
-        sprintf(addr, "%d.%d.%d.%d", h1, h2, h3, h4);
+        sprintf(ip, "%d.%d.%d.%d", h1, h2, h3, h4);
         *port = (p1 << 8) + p2;
         return 1;
     }
 }
 
-int decorate_addr_and_port(char *param, char *addr, int port) {
+int parse_addr(char *param, struct sockaddr_in *addr) {
+    char ip[20];
+    int port;
+    if (!parse_ip_and_port(param, ip, &port)) {
+        return 0;
+    }
+    if (!setup_addr(addr, ip, port)) {
+        return 0;
+    }
+    return 1;
+}
+
+int decorate_ip_and_port(char *param, char *ip, int port) {
     int h1 = -1, h2 = -1, h3 = -1, h4 = -1, p1 = -1, p2 = -1;
-    sscanf(addr, "%d.%d.%d.%d", &h1, &h2, &h3, &h4);
+    sscanf(ip, "%d.%d.%d.%d", &h1, &h2, &h3, &h4);
     p1 = port / 256;
     p2 = port % 256;
-    if (!check_addr_and_port_by_hp(h1, h2, h3, h4, p1, h2)) {
+    if (!check_ip_and_port_by_hp(h1, h2, h3, h4, p1, h2)) {
         return 0;
     } else {
         sprintf(param, "%d,%d,%d,%d,%d,%d", h1, h2, h3, h4, p1, p2);
         return 1;
     }
+}
+
+int decorate_addr(char *param, struct sockaddr_in addr) {
+    char ip[20];
+    int port;
+    parse_ip_and_port_from_addr(addr, ip, &port);
+    return decorate_ip_and_port(param, ip, port);
 }
 
 int get_host_ip(char *ip) {
@@ -267,10 +306,12 @@ int get_host_ip(char *ip) {
         perror("gethostbyname");
         return 0;
     }
-    ip = inet_ntoa(*((struct in_addr *)host_entry->h_addr_list[0]));
-    if (!check_addr_and_port_by_ip(ip, 0)) {
+    char *host_ip = inet_ntoa(*((struct in_addr *)host_entry->h_addr_list[0]));
+    if (!check_ip_and_port_by_ip(host_ip, 0)) {
         return 0;
     }
+
+    strcpy(ip, host_ip);
     return 1;
 }
 
@@ -282,6 +323,12 @@ int gen_random_port() {
     // [20000, 65536)
     port += 20000;
     return port;
+}
+
+void parse_ip_and_port_from_addr(struct sockaddr_in addr, char *ip, int *port) {
+    char *ipp = inet_ntoa(addr.sin_addr);
+    strcpy(ip, ipp);
+    *port = htons(addr.sin_port);
 }
 
 void print_ip_and_port(struct sockaddr_in addr) {
@@ -307,7 +354,7 @@ void path_concat(char *new_path, char *cur_path, char *next_path) {
 int get_file_size(char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) {
-        return 0;
+        return -1;
     }
     fseek(f, 0L, SEEK_END);
     int size = ftell(f);

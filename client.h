@@ -30,8 +30,9 @@ typedef struct Client {
     char argu[100];
 
     // file transfer
-    char file_addr[100];
-    int file_port;
+    struct sockaddr_in file_addr;
+    // char file_ip[100];
+    // int file_port;
     int file_sockfd;
     int offset;
 

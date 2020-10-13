@@ -48,11 +48,7 @@ void pass(Client *client) {
 }
 
 void retr_port(Client *client) {
-    struct sockaddr_in addr;
-    if (!setup_addr(&addr, client->file_addr, client->file_port)) {
-        return;
-    }
-    if (!setup_connect_socket(&client->file_sockfd, addr)) {
+    if (!setup_connect_socket(&client->file_sockfd, client->file_addr)) {
         return;
     }
 
@@ -61,7 +57,7 @@ void retr_port(Client *client) {
     int size = get_file_size(file_path);
 
     char buf[BUF_SIZE];
-    if (size <= 0) {
+    if (size < 0) {
         sprintf(buf, "500 file %s not found.\r\n", client->argu);
         send_msg_to_client(buf, client);
         return;
@@ -70,29 +66,23 @@ void retr_port(Client *client) {
     sprintf(buf, "150 Opening BINARY mode data connection for %s (%d)\r\n", client->argu, size);
     send_msg_to_client(buf, client);
 
-#ifdef DEBUG
-    printf("begin send data\n");
-#endif
-
-    int total = send_file(client->file_sockfd, file_path, client->offset);
-    if (total <= 0) {
+    int total = send_file_by_path(client->file_sockfd, file_path, client->offset);
+    if (total < 0) {
         sprintf(buf, "500 fail to send %s\r\n", client->argu);
         send_msg_to_client(buf, client);
         return;
     }
 
-#ifdef DEBUG
-    printf("data sending finish.\n");
-#endif
-
     client->sent_bytes += total;
     client->sent_files += 1;
+    client->offset = 0;
 
     send_msg_to_client("226 Transfer complete.\r\n", client);
 }
 
 void retr_pasv(Client *client) {
     int sockfd = accept(client->file_sockfd, NULL, NULL);
+
     if (sockfd == -1) {
         send_msg_to_client("500 fail to connect client socket.\r\n", client);
         return;
@@ -103,7 +93,7 @@ void retr_pasv(Client *client) {
     int size = get_file_size(file_path);
 
     char buf[BUF_SIZE];
-    if (size <= 0) {
+    if (size < 0) {
         sprintf(buf, "500 file %s not found.\r\n", client->argu);
         send_msg_to_client(buf, client);
         close(sockfd);
@@ -113,8 +103,8 @@ void retr_pasv(Client *client) {
     sprintf(buf, "150 Opening BINARY mode data connection for %s (%d)\r\n", client->argu, size);
     send_msg_to_client(buf, client);
 
-    int total = send_file(sockfd, file_path, client->offset);
-    if (total <= 0) {
+    int total = send_file_by_path(sockfd, file_path, client->offset);
+    if (total < 0) {
         sprintf(buf, "500 fail to send %s\r\n", client->argu);
         send_msg_to_client(buf, client);
         close(sockfd);
@@ -122,6 +112,7 @@ void retr_pasv(Client *client) {
     }
     client->sent_bytes += total;
     client->sent_files += 1;
+    client->offset = 0;
 
     send_msg_to_client("226 Transfer complete.\r\n", client);
     close(sockfd);
@@ -142,11 +133,7 @@ void retr(Client *client) {
 }
 
 void stor_port(Client *client) {
-    struct sockaddr_in addr;
-    if (!setup_addr(&addr, client->file_addr, client->file_port)) {
-        return;
-    }
-    if (!setup_connect_socket(&client->file_sockfd, addr)) {
+    if (!setup_connect_socket(&client->file_sockfd, client->file_addr)) {
         return;
     }
 
@@ -157,13 +144,14 @@ void stor_port(Client *client) {
     sprintf(buf, "150 Opening BINARY mode data connection for %s\r\n", client->argu);
     send_msg_to_client(buf, client);
 
-    int total = receive_file(client->file_sockfd, file_path);
-    if (total <= 0) {
+    int total = receive_file_by_path(client->file_sockfd, file_path, client->offset);
+    if (total < 0) {
         sprintf(buf, "500 fail to receive %s\r\n", client->argu);
         send_msg_to_client(buf, client);
         return;
     }
 
+    client->offset = 0;
     send_msg_to_client("226 Transfer complete.\r\n", client);
 }
 
@@ -179,14 +167,16 @@ void stor_pasv(Client *client) {
     char buf[BUF_SIZE];
     sprintf(buf, "150 Opening BINARY mode data connection for %s.\r\n", client->argu);
     send_msg_to_client(buf, client);
-    int total = receive_file(sockfd, file_path);
-    if (total <= 0) {
+    int total = receive_file_by_path(sockfd, file_path, client->offset);
+
+    if (total < 0) {
         sprintf(buf, "500 fail to receive %s\r\n", client->argu);
         send_msg_to_client(buf, client);
         close(sockfd);
         return;
     }
 
+    client->offset = 0;
     close(sockfd);
     send_msg_to_client("226 Transfer complete.\r\n", client);
 }
@@ -229,7 +219,7 @@ void type(Client *client) {
     if (!strcmp(client->argu, "I")) {
         send_msg_to_client("200 Type set to I.\r\n", client);
     } else {
-        send_msg_to_client("500 Only Type I is supported", client);
+        send_msg_to_client("500 Only Type I is supported\r\n", client);
     }
 }
 
@@ -238,8 +228,17 @@ void port(Client *client) {
         send_msg_to_client("530 you haven't login in.\r\n", client);
         return;
     }
-    if (parse_addr_and_port(client->argu, client->file_addr, &client->file_port)) {
+    if (parse_addr(client->argu, &client->file_addr)) {
         client->state = PORT;
+
+#ifdef DEBUG
+        print_ip_and_port(client->addr);
+        char ip[20];
+        int port;
+        parse_ip_and_port_from_addr(client->file_addr, ip, &port);
+        printf("enter port mode, listen address: %s:%d\n", ip, port);
+#endif
+
         send_msg_to_client("200 PORT command succesful.\r\n", client);
     } else {
         send_msg_to_client("504 unsupported parameter.\r\n", client);
@@ -251,21 +250,38 @@ void pasv(Client *client) {
         send_msg_to_client("530 you haven't login in.\r\n", client);
         return;
     }
-    if (!get_host_ip(client->file_addr)) {
+    char host_ip[20];
+    if (!get_host_ip(host_ip)) {
         send_msg_to_client("500 fail to get host ip.\r\n", client);
         return;
     }
-    client->file_port = gen_random_port();
+    int file_port = gen_random_port();
+    setup_addr(&client->file_addr, host_ip, file_port);
+
     struct sockaddr_in addr;
-    setup_local_addr(&addr, client->file_port);
+    setup_local_addr(&addr, file_port);
     if (!setup_listen_socket(&client->file_sockfd, addr)) {
         send_msg_to_client("500 fail to setup file socket.\r\n", client);
         return;
     }
+
+#ifdef DEBUG
+    print_ip_and_port(client->addr);
+    printf("enter pasv mode, listen address: %s:%d\n", host_ip, file_port);
+#endif
+
+    client->state = PASV;
     char param[100];
-    decorate_addr_and_port(param, client->file_addr, client->file_port);
+    decorate_addr(param, client->file_addr);
     char buf[BUF_SIZE];
-    sprintf(buf, "227 Entering Passive mode(%s)", param);
+    sprintf(buf, "227 =%s\r\n", param);
+    send_msg_to_client(buf, client);
+}
+
+void rest(Client *client) {
+    client->offset = atoi(client->argu);
+    char buf[BUF_SIZE];
+    sprintf(buf, "350 restart offset is set to %d\r\n", client->offset);
     send_msg_to_client(buf, client);
 }
 
@@ -278,7 +294,7 @@ void mkd(Client *client) {
     path_concat(new_dir, client->cur_path, client->argu);
     char buf[BUF_SIZE];
     if (mkdir(new_dir, 0700) == 0) {
-        sprintf(buf, "257 %s created.\r\n", new_dir);
+        sprintf(buf, "257 \"%s\" created.\r\n", new_dir);
     } else {
         sprintf(buf, "550 %s create failed.\r\n", new_dir);
     }
@@ -316,27 +332,23 @@ void pwd(Client *client) {
         return;
     }
     char buf[BUF_SIZE];
-    sprintf(buf, "257 %s\r\n", client->cur_path);
+    sprintf(buf, "257 \"%s\"\r\n", client->cur_path);
     send_msg_to_client(buf, client);
 }
 
 void list_port(Client *client) {
-    struct sockaddr_in addr;
-    if (!setup_addr(&addr, client->file_addr, client->file_port)) {
-        return;
-    }
-    if (!setup_connect_socket(&client->file_sockfd, addr)) {
+    if (!setup_connect_socket(&client->file_sockfd, client->file_addr)) {
         return;
     }
 
-    system("ls -l | tail +1 > ls.txt");
-    char ls_path[BUF_SIZE];
-    path_concat(ls_path, client->cur_path, "ls.txt");
+    char command[BUF_SIZE];
+    sprintf(command, "cd %s; ls -l | tail +1", client->cur_path);
+    FILE *fp = popen(command, "r");
 
     send_msg_to_client("150 Opening BINARY mode data connection.\r\n", client);
 
-    int total = send_file(client->file_sockfd, ls_path, 0);
-    if (total <= 0) {
+    int total = send_file(client->file_sockfd, fp, 0);
+    if (total < 0) {
         send_msg_to_client("500 fail to send file lists.\r\n", client);
         return;
     }
@@ -350,14 +362,14 @@ void list_pasv(Client *client) {
         return;
     }
 
-    system("ls -l | tail +1 > ls.txt");
-    char ls_path[BUF_SIZE];
-    path_concat(ls_path, client->cur_path, "ls.txt");
+    char command[BUF_SIZE];
+    sprintf(command, "cd %s; ls -l | tail +1", client->cur_path);
+    FILE *fp = popen(command, "r");
 
     send_msg_to_client("150 Opening BINARY mode data connection.\r\n", client);
 
-    int total = send_file(sockfd, ls_path, 0);
-    if (total <= 0) {
+    int total = send_file(sockfd, fp, 0);
+    if (total < 0) {
         send_msg_to_client("500 fail to send file lists.\r\n", client);
         close(sockfd);
         return;
@@ -381,6 +393,23 @@ void list(Client *client) {
     client->state = PASS;
 }
 
+void dele(Client *client) {
+    if (client->state != PASS && client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 you haven't login in.\r\n", client);
+        return;
+    }
+    char path[BUF_SIZE];
+    path_concat(path, client->cur_path, client->argu);
+
+    char buf[BUF_SIZE];
+    if (remove(path) == 0) {
+        sprintf(buf, "250 %s removed.\r\n", path);
+    } else {
+        sprintf(buf, "500 remove %s failed, error msg: %s(%d)\r\n", path, strerror(errno), errno);
+    }
+    send_msg_to_client(buf, client);
+}
+
 void rmd(Client *client) {
     if (client->state != PASS && client->state != PORT && client->state != PASV) {
         send_msg_to_client("530 you haven't login in.\r\n", client);
@@ -391,9 +420,9 @@ void rmd(Client *client) {
 
     char buf[BUF_SIZE];
     if (rmdir(path) == 0) {
-        sprintf(buf, "250 %s directory removed.\r\n", path);
+        sprintf(buf, "250 %s removed.\r\n", path);
     } else {
-        sprintf(buf, "500 remove %s failed.\r\n", path);
+        sprintf(buf, "500 remove %s failed, error msg: %s(%d)\r\n", path, strerror(errno), errno);
     }
     send_msg_to_client(buf, client);
 }
@@ -445,35 +474,39 @@ void listen_to_client(Client *client) {
     send_msg_to_client("220 Anonymous FTP server ready.\r\n", client);
 
     while (1) {
+        if (!receive_request_from_client(client)) {
+            continue;
+        }
+
 #ifdef DEBUG
         print_ip_and_port(client->addr);
-        printf("state: ");
+        printf("from client: %s %s", client->command, client->argu);
+        printf("\tcurrent state: ");
         switch (client->state) {
             case DISCONNECT:
-                printf("DISCONNECT\n");
+                printf("DISCONNECT");
                 break;
             case CONNECT:
-                printf("CONNECT\n");
+                printf("CONNECT");
                 break;
             case USER:
-                printf("USER\n");
+                printf("USER");
                 break;
             case PASS:
-                printf("PASS\n");
+                printf("PASS");
                 break;
             case PORT:
-                printf("PORT\n");
+                printf("PORT");
                 break;
             case PASV:
-                printf("PASV\n");
+                printf("PASV");
                 break;
             default:
                 break;
         }
+        printf("\n");
 #endif
-        if (!receive_request_from_client(client)) {
-            continue;
-        }
+
         if (!strcmp(client->command, "USER")) {
             user(client);
         } else if (!strcmp(client->command, "PASS")) {
@@ -496,6 +529,8 @@ void listen_to_client(Client *client) {
             port(client);
         } else if (!strcmp(client->command, "PASV")) {
             pasv(client);
+        } else if (!strcmp(client->command, "REST")) {
+            rest(client);
         } else if (!strcmp(client->command, "MKD")) {
             mkd(client);
         } else if (!strcmp(client->command, "CWD")) {
@@ -506,6 +541,8 @@ void listen_to_client(Client *client) {
             list(client);
         } else if (!strcmp(client->command, "RMD")) {
             rmd(client);
+        } else if (!strcmp(client->command, "DELE")) {
+            dele(client);
         } else if (!strcmp(client->command, "RNFR")) {
             rnfr(client);
         } else if (!strcmp(client->command, "RNTO")) {

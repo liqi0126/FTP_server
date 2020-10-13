@@ -36,6 +36,7 @@ void syst(Client *client);
 void type(Client *client);
 void port(Client *client);
 void pasv(Client *client);
+void rest(Client *client);
 void mkd(Client *client);
 void cwd(Client *client);
 void pwd(Client *client);
