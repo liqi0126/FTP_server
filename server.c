@@ -184,26 +184,38 @@ void pasv(Client *client) {
         send_msg_to_client("500 fail to get host ip.\r\n", client);
         return;
     }
-    int file_port = gen_random_port();
-    setup_addr(&client->file_addr, host_ip, file_port);
 
-    struct sockaddr_in addr;
-    setup_local_addr(&addr, file_port);
-    if (!setup_listen_socket(&client->file_sockfd, addr)) {
-        send_msg_to_client("500 fail to setup file socket.\r\n", client);
+    int file_port = -1;
+    for (int try = 0; try < RETRY_TIME; try ++) {
+        file_port = gen_random_port();
+        setup_addr(&client->file_addr, host_ip, file_port);
+
+        struct sockaddr_in addr;
+        setup_local_addr(&addr, file_port);
+        if (!setup_listen_socket(&client->file_sockfd, addr)) {
+            printf("setup listen socket %d failed.\n", try);
+            close(client->file_sockfd);
+            file_port = -1;
+            continue;
+        }
+        break;
+    }
+
+    if (file_port == -1) {
+        printf("fail to setup listen socket.\n");
         return;
     }
 
 #ifdef DEBUG
     print_ip_and_port(client->addr);
-    printf("enter pasv mode, listen address: %s:%d\n", host_ip, file_port);
+    printf("enter pasv mode, listen address: %s:%u\n", host_ip, file_port);
 #endif
 
     client->state = PASV;
     char param[100];
     decorate_addr(param, client->file_addr);
     char buf[BUF_SIZE];
-    sprintf(buf, "227 =%s\r\n", param);
+    sprintf(buf, "227 (%s)\r\n", param);
     send_msg_to_client(buf, client);
 }
 

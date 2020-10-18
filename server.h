@@ -12,7 +12,7 @@
 #define DEFAULT_ROOT_PATH "/tmp/"
 #define BACKLOG 5
 #define BUF_SIZE 8192
-
+#define RETRY_TIME 10
 /*-------------------------------STRUCT-----------------------------------*/
 typedef struct Server {
     // basic config
