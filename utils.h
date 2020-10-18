@@ -17,6 +17,7 @@ int setup_connect_socket(int *sockfd, struct sockaddr_in addr);
 // communicate with client
 int receive_request_from_client(Client *client);
 void send_msg_to_client(char *buffer, Client *client);
+int build_file_conn_socket(int *sockfd, Client *client);
 int send_file(int sockfd, FILE *fp, int offset);
 int send_file_by_path(int sockfd, char *file_path, int offset);
 int receive_file(int sockfd, FILE *fp, int offset);
