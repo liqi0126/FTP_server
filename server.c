@@ -53,7 +53,8 @@ void retr_port(Client *client) {
     }
 
     char file_path[BUF_SIZE];
-    path_concat(file_path, client->cur_path, client->argu);
+    get_full_path(file_path, client->root_path, client->cur_path, client->argu);
+    // path_concat(file_path, client->cur_path, client->argu);
     int size = get_file_size(file_path);
 
     char buf[BUF_SIZE];
@@ -88,7 +89,8 @@ void retr_pasv(Client *client) {
         return;
     }
     char file_path[BUF_SIZE];
-    path_concat(file_path, client->cur_path, client->argu);
+    // path_concat(file_path, client->cur_path, client->argu);
+    get_full_path(file_path, client->root_path, client->cur_path, client->argu);
 
     int size = get_file_size(file_path);
 
@@ -138,7 +140,8 @@ void stor_port(Client *client) {
     }
 
     char file_path[BUF_SIZE];
-    path_concat(file_path, client->cur_path, client->argu);
+    // path_concat(file_path, client->cur_path, client->argu);
+    get_full_path(file_path, client->root_path, client->cur_path, client->argu);
 
     char buf[BUF_SIZE];
     sprintf(buf, "150 Opening BINARY mode data connection for %s\r\n", client->argu);
@@ -162,7 +165,8 @@ void stor_pasv(Client *client) {
     }
 
     char file_path[BUF_SIZE];
-    path_concat(file_path, client->cur_path, client->argu);
+    // path_concat(file_path, client->cur_path, client->argu);
+    get_full_path(file_path, client->root_path, client->cur_path, client->argu);
 
     char buf[BUF_SIZE];
     sprintf(buf, "150 Opening BINARY mode data connection for %s.\r\n", client->argu);
@@ -291,7 +295,8 @@ void mkd(Client *client) {
         return;
     }
     char new_dir[BUF_SIZE];
-    path_concat(new_dir, client->cur_path, client->argu);
+    // path_concat(new_dir, client->cur_path, client->argu);
+    get_full_path(new_dir, client->root_path, client->cur_path, client->argu);
     char buf[BUF_SIZE];
     if (mkdir(new_dir, 0700) == 0) {
         sprintf(buf, "257 \"%s\" created.\r\n", new_dir);
@@ -342,7 +347,9 @@ void list_port(Client *client) {
     }
 
     char command[BUF_SIZE];
-    sprintf(command, "cd %s; ls -l | tail +1", client->cur_path);
+    char cur_path[BUF_SIZE];
+    path_concat(cur_path, client->root_path, client->cur_path);
+    sprintf(command, "cd %s; ls -l | tail +1", cur_path);
     FILE *fp = popen(command, "r");
 
     send_msg_to_client("150 Opening BINARY mode data connection.\r\n", client);
@@ -363,7 +370,9 @@ void list_pasv(Client *client) {
     }
 
     char command[BUF_SIZE];
-    sprintf(command, "cd %s; ls -l | tail +1", client->cur_path);
+    char cur_path[BUF_SIZE];
+    path_concat(cur_path, client->root_path, client->cur_path);
+    sprintf(command, "cd %s; ls -l | tail +1", cur_path);
     FILE *fp = popen(command, "r");
 
     send_msg_to_client("150 Opening BINARY mode data connection.\r\n", client);
@@ -399,7 +408,8 @@ void dele(Client *client) {
         return;
     }
     char path[BUF_SIZE];
-    path_concat(path, client->cur_path, client->argu);
+    get_full_path(path, client->root_path, client->cur_path, client->argu);
+    // path_concat(path, client->cur_path, client->argu);
 
     char buf[BUF_SIZE];
     if (remove(path) == 0) {
@@ -416,7 +426,8 @@ void rmd(Client *client) {
         return;
     }
     char path[BUF_SIZE];
-    path_concat(path, client->cur_path, client->argu);
+    get_full_path(path, client->root_path, client->cur_path, client->argu);
+    // path_concat(path, client->cur_path, client->argu);
 
     char buf[BUF_SIZE];
     if (rmdir(path) == 0) {
@@ -432,7 +443,8 @@ void rnfr(Client *client) {
         send_msg_to_client("530 you haven't login in.\r\n", client);
         return;
     }
-    path_concat(client->src_file, client->cur_path, client->argu);
+    get_full_path(client->src_file, client->root_path, client->cur_path, client->argu);
+    // path_concat(client->src_file, client->cur_path, client->argu);
     if (access(client->src_file, F_OK) == -1) {
         char buf[BUF_SIZE];
         sprintf(buf, "500 no such a file.\r\n");
@@ -455,7 +467,8 @@ void rnto(Client *client) {
         send_msg_to_client("500 you need to specify the source file name first.\r\n", client);
         return;
     }
-    path_concat(client->dst_file, client->cur_path, client->argu);
+    // path_concat(client->dst_file, client->cur_path, client->argu);
+    get_full_path(client->dst_file, client->root_path, client->cur_path, client->argu);
 
     char buf[BUF_SIZE];
     if (rename(client->src_file, client->dst_file) != 0) {
@@ -579,7 +592,8 @@ int main(int argc, char **argv) {
             // set up client
             memset(client.src_file, 0, strlen(client.src_file));
             memset(client.dst_file, 0, strlen(client.dst_file));
-            strcpy(client.cur_path, server.root_path);
+            strcpy(client.root_path, server.root_path);
+            strcpy(client.cur_path, "/");
             client.offset = 0;
             client.sent_bytes = 0;
             client.sent_files = 0;

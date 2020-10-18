@@ -20,6 +20,7 @@ typedef struct Client {
     // basic config
     struct sockaddr_in addr;
     int control_sockfd;
+    char root_path[100];
     char cur_path[100];
 
     // status

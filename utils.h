@@ -33,6 +33,7 @@ int gen_random_port();
 void parse_ip_and_port_from_addr(struct sockaddr_in addr, char *ip, int *port);
 void print_ip_and_port(struct sockaddr_in addr);
 // file related
+void get_full_path(char *full_path, char *root_path, char *cur_path, char *argu_path);
 void path_concat(char *new_path, char *cur_path, char *next_path);
 int get_file_size(char *path);
 #endif

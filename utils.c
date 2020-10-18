@@ -336,6 +336,40 @@ void print_ip_and_port(struct sockaddr_in addr) {
 }
 /*---------------------------File related--------------------------------*/
 
+void get_full_path(char *full_path, char *root_path, char *cur_path, char *argu_path) {
+    strcpy(full_path, root_path);
+    if (full_path[strlen(full_path) - 1] != '/') {
+        strcat(full_path, "/");
+    }
+
+    for (int i = strlen(argu_path); i >= 0; i--) {
+        if (argu_path[i] == '\r' || argu_path[i] == '\n') {
+            argu_path[i] = '\0';
+        } else {
+            break;
+        }
+    }
+
+    if (strlen(argu_path) > 0 && argu_path[0] == '/') {
+        strcat(full_path, argu_path + 1);
+        return;
+    }
+
+    if (strlen(cur_path) > 0) {
+        if (cur_path[0] == '/') {
+            strcat(full_path, cur_path + 1);
+        } else {
+            strcat(full_path, cur_path);
+        }
+    }
+
+    if (full_path[strlen(full_path) - 1] != '/') {
+        strcat(full_path, "/");
+    }
+
+    strcat(full_path, argu_path);
+}
+
 void path_concat(char *new_path, char *cur_path, char *next_path) {
     strcpy(new_path, cur_path);
     if (new_path[strlen(new_path) - 1] != '/') {
@@ -348,7 +382,12 @@ void path_concat(char *new_path, char *cur_path, char *next_path) {
             break;
         }
     }
-    strcat(new_path, next_path);
+
+    if (strlen(next_path) > 0 && next_path[0] == '/') {
+        strcat(new_path, next_path + 1);
+    } else {
+        strcat(new_path, next_path);
+    }
 }
 
 int get_file_size(char *path) {
