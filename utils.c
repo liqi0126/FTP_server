@@ -164,6 +164,23 @@ void send_msg_to_client(char *buffer, Client *client) {
     }
 }
 
+int build_file_conn_socket(int *sockfd, Client *client) {
+    if (client->state != PORT && client->state != PASV) {
+        printf("require PORT/PASV mode.\n");
+        return 0;
+    }
+    if (client->state == PORT) {
+        return setup_connect_socket(sockfd, client->file_addr);
+    } else {
+        *sockfd = accept(client->file_sockfd, NULL, NULL);
+        close(client->file_sockfd);
+        if (*sockfd == -1) {
+            return 0;
+        }
+        return 1;
+    }
+}
+
 int send_file(int sockfd, FILE *fp, int offset) {
     if (!fp) {
         printf("Error: cannot open file\n");

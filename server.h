@@ -25,11 +25,7 @@ typedef struct Server {
 /*------------------------------FUNCTIONS---------------------------------*/
 void user(Client *client);
 void pass(Client *client);
-void retr_port(Client *client);
-void retr_pasv(Client *client);
 void retr(Client *client);
-void stor_port(Client *client);
-void stor_pasv(Client *client);
 void stor(Client *client);
 void quit(Client *client);
 void syst(Client *client);
@@ -40,8 +36,6 @@ void rest(Client *client);
 void mkd(Client *client);
 void cwd(Client *client);
 void pwd(Client *client);
-void list_port(Client *client);
-void list_pasv(Client *client);
 void list(Client *client);
 void rmd(Client *client);
 void rnfr(Client *client);

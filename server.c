@@ -47,51 +47,20 @@ void pass(Client *client) {
     }
 }
 
-void retr_port(Client *client) {
-    if (!setup_connect_socket(&client->file_sockfd, client->file_addr)) {
+void retr(Client *client) {
+    if (client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 require PORT/PASV mode.\r\n", client);
+        return;
+    }
+
+    int sockfd = -1;
+    if (!build_file_conn_socket(&sockfd, client)) {
+        send_msg_to_client("530 fail to set up connect socket.\r\n", client);
         return;
     }
 
     char file_path[BUF_SIZE];
     get_full_path(file_path, client->root_path, client->cur_path, client->argu);
-    // path_concat(file_path, client->cur_path, client->argu);
-    int size = get_file_size(file_path);
-
-    char buf[BUF_SIZE];
-    if (size < 0) {
-        sprintf(buf, "500 file %s not found.\r\n", client->argu);
-        send_msg_to_client(buf, client);
-        return;
-    }
-
-    sprintf(buf, "150 Opening BINARY mode data connection for %s (%d)\r\n", client->argu, size);
-    send_msg_to_client(buf, client);
-
-    int total = send_file_by_path(client->file_sockfd, file_path, client->offset);
-    if (total < 0) {
-        sprintf(buf, "500 fail to send %s\r\n", client->argu);
-        send_msg_to_client(buf, client);
-        return;
-    }
-
-    client->sent_bytes += total;
-    client->sent_files += 1;
-    client->offset = 0;
-
-    send_msg_to_client("226 Transfer complete.\r\n", client);
-}
-
-void retr_pasv(Client *client) {
-    int sockfd = accept(client->file_sockfd, NULL, NULL);
-
-    if (sockfd == -1) {
-        send_msg_to_client("500 fail to connect client socket.\r\n", client);
-        return;
-    }
-    char file_path[BUF_SIZE];
-    // path_concat(file_path, client->cur_path, client->argu);
-    get_full_path(file_path, client->root_path, client->cur_path, client->argu);
-
     int size = get_file_size(file_path);
 
     char buf[BUF_SIZE];
@@ -112,77 +81,14 @@ void retr_pasv(Client *client) {
         close(sockfd);
         return;
     }
+
+    send_msg_to_client("226 Transfer complete.\r\n", client);
+    close(sockfd);
+
     client->sent_bytes += total;
     client->sent_files += 1;
     client->offset = 0;
-
-    send_msg_to_client("226 Transfer complete.\r\n", client);
-    close(sockfd);
-}
-
-void retr(Client *client) {
-    if (client->state != PORT && client->state != PASV) {
-        send_msg_to_client("530 require PORT/PASV mode.\r\n", client);
-        return;
-    }
-    if (client->state == PORT) {
-        retr_port(client);
-    } else {
-        retr_pasv(client);
-    }
-    close(client->file_sockfd);
     client->state = PASS;
-}
-
-void stor_port(Client *client) {
-    if (!setup_connect_socket(&client->file_sockfd, client->file_addr)) {
-        return;
-    }
-
-    char file_path[BUF_SIZE];
-    // path_concat(file_path, client->cur_path, client->argu);
-    get_full_path(file_path, client->root_path, client->cur_path, client->argu);
-
-    char buf[BUF_SIZE];
-    sprintf(buf, "150 Opening BINARY mode data connection for %s\r\n", client->argu);
-    send_msg_to_client(buf, client);
-
-    int total = receive_file_by_path(client->file_sockfd, file_path, client->offset);
-    if (total < 0) {
-        sprintf(buf, "500 fail to receive %s\r\n", client->argu);
-        send_msg_to_client(buf, client);
-        return;
-    }
-
-    client->offset = 0;
-    send_msg_to_client("226 Transfer complete.\r\n", client);
-}
-
-void stor_pasv(Client *client) {
-    int sockfd = accept(client->file_sockfd, NULL, NULL);
-    if (sockfd == -1) {
-        send_msg_to_client("500 fail to connect client socket.\r\n", client);
-    }
-
-    char file_path[BUF_SIZE];
-    // path_concat(file_path, client->cur_path, client->argu);
-    get_full_path(file_path, client->root_path, client->cur_path, client->argu);
-
-    char buf[BUF_SIZE];
-    sprintf(buf, "150 Opening BINARY mode data connection for %s.\r\n", client->argu);
-    send_msg_to_client(buf, client);
-    int total = receive_file_by_path(sockfd, file_path, client->offset);
-
-    if (total < 0) {
-        sprintf(buf, "500 fail to receive %s\r\n", client->argu);
-        send_msg_to_client(buf, client);
-        close(sockfd);
-        return;
-    }
-
-    client->offset = 0;
-    close(sockfd);
-    send_msg_to_client("226 Transfer complete.\r\n", client);
 }
 
 void stor(Client *client) {
@@ -190,12 +96,31 @@ void stor(Client *client) {
         send_msg_to_client("530 require PORT/PASV mode.\r\n", client);
         return;
     }
-    if (client->state == PORT) {
-        stor_port(client);
-    } else {
-        stor_pasv(client);
+
+    int sockfd = -1;
+    if (!build_file_conn_socket(&sockfd, client)) {
+        send_msg_to_client("500 fail to set up connect socket.\r\n", client);
+        return;
     }
-    close(client->file_sockfd);
+
+    char file_path[BUF_SIZE];
+    get_full_path(file_path, client->root_path, client->cur_path, client->argu);
+
+    char buf[BUF_SIZE];
+    sprintf(buf, "150 Opening BINARY mode data connection for %s.\r\n", client->argu);
+    send_msg_to_client(buf, client);
+
+    int total = receive_file_by_path(sockfd, file_path, client->offset);
+    if (total < 0) {
+        sprintf(buf, "500 fail to receive %s\r\n", client->argu);
+        send_msg_to_client(buf, client);
+        close(sockfd);
+        return;
+    }
+    close(sockfd);
+    send_msg_to_client("226 Transfer complete.\r\n", client);
+
+    client->offset = 0;
     client->state = PASS;
 }
 
@@ -295,7 +220,6 @@ void mkd(Client *client) {
         return;
     }
     char new_dir[BUF_SIZE];
-    // path_concat(new_dir, client->cur_path, client->argu);
     get_full_path(new_dir, client->root_path, client->cur_path, client->argu);
     char buf[BUF_SIZE];
     if (mkdir(new_dir, 0700) == 0) {
@@ -341,37 +265,21 @@ void pwd(Client *client) {
     send_msg_to_client(buf, client);
 }
 
-void list_port(Client *client) {
-    if (!setup_connect_socket(&client->file_sockfd, client->file_addr)) {
+void list(Client *client) {
+    if (client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 require PORT/PASV mode.\r\n", client);
+        return;
+    }
+
+    int sockfd = -1;
+    if (!build_file_conn_socket(&sockfd, client)) {
+        send_msg_to_client("500 fail to set up connect socket.\r\n", client);
         return;
     }
 
     char command[BUF_SIZE];
     char cur_path[BUF_SIZE];
-    path_concat(cur_path, client->root_path, client->cur_path);
-    sprintf(command, "cd %s; ls -l | tail +1", cur_path);
-    FILE *fp = popen(command, "r");
-
-    send_msg_to_client("150 Opening BINARY mode data connection.\r\n", client);
-
-    int total = send_file(client->file_sockfd, fp, 0);
-    if (total < 0) {
-        send_msg_to_client("500 fail to send file lists.\r\n", client);
-        return;
-    }
-    send_msg_to_client("226 Transfer complete.\r\n", client);
-}
-
-void list_pasv(Client *client) {
-    int sockfd = accept(client->file_sockfd, NULL, NULL);
-    if (sockfd == -1) {
-        send_msg_to_client("500 fail to connect client socket.\r\n", client);
-        return;
-    }
-
-    char command[BUF_SIZE];
-    char cur_path[BUF_SIZE];
-    path_concat(cur_path, client->root_path, client->cur_path);
+    get_full_path(cur_path, client->root_path, client->cur_path, "");
     sprintf(command, "cd %s; ls -l | tail +1", cur_path);
     FILE *fp = popen(command, "r");
 
@@ -385,20 +293,7 @@ void list_pasv(Client *client) {
     }
     send_msg_to_client("226 Transfer complete.\r\n", client);
     close(sockfd);
-}
 
-void list(Client *client) {
-    if (client->state != PORT && client->state != PASV) {
-        send_msg_to_client("530 require PORT/PASV mode.\r\n", client);
-        return;
-    }
-
-    if (client->state == PORT) {
-        list_port(client);
-    } else {
-        list_pasv(client);
-    }
-    close(client->file_sockfd);
     client->state = PASS;
 }
 
@@ -409,7 +304,6 @@ void dele(Client *client) {
     }
     char path[BUF_SIZE];
     get_full_path(path, client->root_path, client->cur_path, client->argu);
-    // path_concat(path, client->cur_path, client->argu);
 
     char buf[BUF_SIZE];
     if (remove(path) == 0) {
@@ -427,7 +321,6 @@ void rmd(Client *client) {
     }
     char path[BUF_SIZE];
     get_full_path(path, client->root_path, client->cur_path, client->argu);
-    // path_concat(path, client->cur_path, client->argu);
 
     char buf[BUF_SIZE];
     if (rmdir(path) == 0) {
@@ -467,7 +360,6 @@ void rnto(Client *client) {
         send_msg_to_client("500 you need to specify the source file name first.\r\n", client);
         return;
     }
-    // path_concat(client->dst_file, client->cur_path, client->argu);
     get_full_path(client->dst_file, client->root_path, client->cur_path, client->argu);
 
     char buf[BUF_SIZE];
