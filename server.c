@@ -488,10 +488,10 @@ int main(int argc, char **argv) {
         // waiting for client socket to connect
         // to get the addr of the connected client.
         // but this can cause error when bind to 21 port. (unolved bug.)
-        memset(&client.addr, 0, sizeof(client.addr));
-        socklen_t addrlen;
-        client.control_sockfd = accept(server.control_sockfd, (struct sockaddr *)&client.addr, &addrlen);
-        /* client.control_sockfd = accept(server.control_sockfd, NULL, NULL); */
+        /* memset(&client.addr, 0, sizeof(client.addr)); */
+        /* socklen_t addrlen; */
+        /* client.control_sockfd = accept(server.control_sockfd, (struct sockaddr *)&client.addr, &addrlen); */
+        client.control_sockfd = accept(server.control_sockfd, NULL, NULL);
         if (client.control_sockfd == -1) {
             printf("Error: fail to connect client, error msg: %s(%d)\n", strerror(errno), errno);
             return -1;
