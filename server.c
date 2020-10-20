@@ -126,7 +126,7 @@ void stor(Client *client) {
 
 void quit(Client *client) {
     char buf[BUF_SIZE];
-    sprintf(buf, "221-You have transferred %d bytes in %d files.", client->sent_bytes, client->sent_files);
+    sprintf(buf, "221-You have transferred %d bytes in %d files.\r\n", client->sent_bytes, client->sent_files);
     strcat(buf, "221-Thank you for using the FTP service.\r\n");
     strcat(buf, "221 Goodbye.\r\n");
     send_msg_to_client(buf, client);
@@ -247,7 +247,10 @@ void cwd(Client *client) {
         send_msg_to_client("530 you haven't login in.\r\n", client);
         return;
     }
-    DIR *dir = opendir(client->argu);
+    char new_path[BUF_SIZE];
+    get_full_path(new_path, client->root_path, client->cur_path, client->argu);
+
+    DIR *dir = opendir(new_path);
     if (dir) {
         closedir(dir);
         if (client->argu[0] == '/') {
@@ -259,6 +262,12 @@ void cwd(Client *client) {
         }
         char buf[BUF_SIZE];
         sprintf(buf, "250 go to %s\r\n", client->cur_path);
+
+#ifdef DEBUG
+        print_ip_and_port(client->addr);
+        printf("cur_path: %s\n", client->cur_path);
+#endif
+
         send_msg_to_client(buf, client);
     } else {
         char buf[BUF_SIZE];

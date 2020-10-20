@@ -236,11 +236,17 @@ int receive_file(int sockfd, FILE *fp, int offset) {
 int receive_file_by_path(int sockfd, char *file_path, int offset) {
     FILE *fp = NULL;
     if (offset > 0) {
-        fp = fopen(file_path, "r+");
+        fp = fopen(file_path, "r+b");
     } else {
-        fp = fopen(file_path, "w");
+        fp = fopen(file_path, "wb");
     }
     return receive_file(sockfd, fp, offset);
+}
+
+int append_file_by_path(int sockfd, char *file_path) {
+    FILE *fp = NULL;
+    fp = fopen(file_path, "ab");
+    return receive_file(sockfd, fp, 0);
 }
 
 /*---------------------------IP related--------------------------------*/
