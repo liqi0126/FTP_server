@@ -22,6 +22,7 @@ int send_file(int sockfd, FILE *fp, int offset);
 int send_file_by_path(int sockfd, char *file_path, int offset);
 int receive_file(int sockfd, FILE *fp, int offset);
 int receive_file_by_path(int sockfd, char *file_path, int offset);
+int append_file_by_path(int sockfd, char *file_path);
 // ip related
 int check_ip_and_port_by_hp(int h1, int h2, int h3, int h4, int p1, int p2);
 int check_ip_and_port_by_ip(char *ip, int port);

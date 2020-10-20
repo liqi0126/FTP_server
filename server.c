@@ -124,6 +124,39 @@ void stor(Client *client) {
     client->state = PASS;
 }
 
+void appe(Client *client) {
+    if (client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 require PORT/PASV mode.\r\n", client);
+        return;
+    }
+
+    int sockfd = -1;
+    if (!build_file_conn_socket(&sockfd, client)) {
+        send_msg_to_client("500 fail to set up connect socket.\r\n", client);
+        return;
+    }
+
+    char file_path[BUF_SIZE];
+    get_full_path(file_path, client->root_path, client->cur_path, client->argu);
+
+    char buf[BUF_SIZE];
+    sprintf(buf, "150 Opening BINARY mode data connection for %s.\r\n", client->argu);
+    send_msg_to_client(buf, client);
+
+    int total = append_file_by_path(sockfd, file_path);
+    if (total < 0) {
+        sprintf(buf, "500 fail to receive %s\r\n", client->argu);
+        send_msg_to_client(buf, client);
+        close(sockfd);
+        return;
+    }
+    close(sockfd);
+    send_msg_to_client("226 Transfer complete.\r\n", client);
+
+    client->offset = 0;
+    client->state = PASS;
+}
+
 void quit(Client *client) {
     char buf[BUF_SIZE];
     sprintf(buf, "221-You have transferred %d bytes in %d files.\r\n", client->sent_bytes, client->sent_files);
@@ -318,6 +351,28 @@ void list(Client *client) {
     client->state = PASS;
 }
 
+void size(Client *client) {
+    if (client->state != PASS && client->state != PORT && client->state != PASV) {
+        send_msg_to_client("530 you haven't login in.\r\n", client);
+        return;
+    }
+    char path[BUF_SIZE];
+    get_full_path(path, client->root_path, client->cur_path, client->argu);
+    FILE *fp = fopen(path, "rb");
+    char buf[BUF_SIZE];
+    if (!fp) {
+        sprintf(buf, "500 cannot find file %s", client->argu);
+        send_msg_to_client(buf, client);
+    }
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    fclose(fp);
+
+    sprintf(buf, "231 %ld", file_size);
+    send_msg_to_client(buf, client);
+}
+
 void dele(Client *client) {
     if (client->state != PASS && client->state != PORT && client->state != PASV) {
         send_msg_to_client("530 you haven't login in.\r\n", client);
@@ -441,6 +496,8 @@ void listen_to_client(Client *client) {
             retr(client);
         } else if (!strcmp(client->command, "STOR")) {
             stor(client);
+        } else if (!strcmp(client->command, "APPE")) {
+            appe(client);
         } else if (!strcmp(client->command, "QUIT")) {
             quit(client);
             break;
@@ -465,6 +522,8 @@ void listen_to_client(Client *client) {
             pwd(client);
         } else if (!strcmp(client->command, "LIST")) {
             list(client);
+        } else if (!strcmp(client->command, "SIZE")) {
+            size(client);
         } else if (!strcmp(client->command, "RMD")) {
             rmd(client);
         } else if (!strcmp(client->command, "DELE")) {
@@ -496,7 +555,7 @@ int main(int argc, char **argv) {
         Client client;
         // waiting for client socket to connect
         // to get the addr of the connected client.
-        // but this can cause error when bind to 21 port. (unolved bug.)
+        // but this can cause error when bind to 21 port. (unsolved bug.)
         /* memset(&client.addr, 0, sizeof(client.addr)); */
         /* socklen_t addrlen; */
         /* client.control_sockfd = accept(server.control_sockfd, (struct sockaddr *)&client.addr, &addrlen); */

@@ -27,6 +27,7 @@ void user(Client *client);
 void pass(Client *client);
 void retr(Client *client);
 void stor(Client *client);
+void appe(Client *client);
 void quit(Client *client);
 void syst(Client *client);
 void type(Client *client);
