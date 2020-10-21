@@ -1,5 +1,5 @@
 server: server.o utils.o
-	gcc -g utils.o server.o -o server -Wall
+	gcc -g utils.o server.o -o server -lpthread -Wall
 server.o: server.c
 	gcc -c -g server.c -o server.o -Wall
 utils.o: utils.c
