@@ -10,6 +10,7 @@
 #include <net/if.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,7 +48,7 @@ void pass(Client *client) {
     }
 }
 
-void retr(Client *client) {
+void retr_job(Client *client) {
     if (client->state != PORT && client->state != PASV) {
         send_msg_to_client("530 require PORT/PASV mode.\r\n", client);
         return;
@@ -91,7 +92,15 @@ void retr(Client *client) {
     client->state = PASS;
 }
 
-void stor(Client *client) {
+void retr(Client *client) {
+    pthread_t thread;
+    int rc = pthread_create(&thread, NULL, (void *)&retr_job, client);
+    if (rc != 0) {
+        printf("Error: fail to create thread %d\n", rc);
+    }
+}
+
+void stor_job(Client *client) {
     if (client->state != PORT && client->state != PASV) {
         send_msg_to_client("530 require PORT/PASV mode.\r\n", client);
         return;
@@ -124,7 +133,15 @@ void stor(Client *client) {
     client->state = PASS;
 }
 
-void appe(Client *client) {
+void stor(Client *client) {
+    pthread_t thread;
+    int rc = pthread_create(&thread, NULL, (void *)&stor_job, client);
+    if (rc != 0) {
+        printf("Error: fail to create thread %d\n", rc);
+    }
+}
+
+void appe_job(Client *client) {
     if (client->state != PORT && client->state != PASV) {
         send_msg_to_client("530 require PORT/PASV mode.\r\n", client);
         return;
@@ -155,6 +172,14 @@ void appe(Client *client) {
 
     client->offset = 0;
     client->state = PASS;
+}
+
+void appe(Client *client) {
+    pthread_t thread;
+    int rc = pthread_create(&thread, NULL, (void *)&appe_job, client);
+    if (rc != 0) {
+        printf("Error: fail to create thread %d\n", rc);
+    }
 }
 
 void quit(Client *client) {
