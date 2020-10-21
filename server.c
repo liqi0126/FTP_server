@@ -255,7 +255,7 @@ void pasv(Client *client) {
     struct sockaddr_in sin;
     socklen_t len;
     if (getsockname(client->file_sockfd, (struct sockaddr *)&sin, &len) == -1) {
-        printf("fail to check socket bind port.\n");
+        printf("fail to check socket bind port, error msg: %s(%d)\n", strerror(errno), errno);
         return;
     }
     int file_port = ntohs(sin.sin_port);
