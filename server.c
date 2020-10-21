@@ -243,23 +243,32 @@ void pasv(Client *client) {
         return;
     }
 
-    struct sockaddr_in addr;
-    setup_local_addr(&addr, 0);  // port 0 to connect a usable port
-    if (!setup_listen_socket(&client->file_sockfd, addr)) {
-        close(client->file_sockfd);
-        printf("fail to setup listen socket.\n");
-        return;
-    }
+    int file_port = 0;
+    for (int retry = 0; retry < RETRY_TIME; retry++) {
+        printf("setup port attempt %d\n", retry);
+        struct sockaddr_in addr;
+        setup_local_addr(&addr, 0);  // port 0 to connect a usable port
+        if (!setup_listen_socket(&client->file_sockfd, addr)) {
+            close(client->file_sockfd);
+            printf("fail to setup listen socket.\n");
+            continue;
+        }
 
-    // get socket port
-    struct sockaddr_in sin;
-    socklen_t len;
-    if (getsockname(client->file_sockfd, (struct sockaddr *)&sin, &len) == -1) {
-        printf("fail to check socket bind port, error msg: %s(%d)\n", strerror(errno), errno);
-        return;
+        // get socket port
+        struct sockaddr_in sin;
+        socklen_t len;
+        if (getsockname(client->file_sockfd, (struct sockaddr *)&sin, &len) == -1) {
+            printf("fail to check socket bind port, error msg: %s(%d)\n", strerror(errno), errno);
+            continue;
+        }
+        int file_port = ntohs(sin.sin_port);
+        if (file_port <= 0) {
+            printf("invalid port\n");
+            continue;
+        }
+        setup_addr(&client->file_addr, host_ip, file_port);
+        break;
     }
-    int file_port = ntohs(sin.sin_port);
-    setup_addr(&client->file_addr, host_ip, file_port);
 
 #ifdef DEBUG
     print_ip_and_port(client->addr);
