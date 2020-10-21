@@ -243,26 +243,23 @@ void pasv(Client *client) {
         return;
     }
 
-    int file_port = -1;
-    for (int try = 0; try < RETRY_TIME; try ++) {
-        file_port = gen_random_port();
-        setup_addr(&client->file_addr, host_ip, file_port);
-
-        struct sockaddr_in addr;
-        setup_local_addr(&addr, file_port);
-        if (!setup_listen_socket(&client->file_sockfd, addr)) {
-            printf("setup listen socket %d failed.\n", try);
-            close(client->file_sockfd);
-            file_port = -1;
-            continue;
-        }
-        break;
-    }
-
-    if (file_port == -1) {
+    struct sockaddr_in addr;
+    setup_local_addr(&addr, 0);  // port 0 to connect a usable port
+    if (!setup_listen_socket(&client->file_sockfd, addr)) {
+        close(client->file_sockfd);
         printf("fail to setup listen socket.\n");
         return;
     }
+
+    // get socket port
+    struct sockaddr_in sin;
+    socklen_t len;
+    if (getsockname(client->file_sockfd, (struct sockaddr *)&sin, &len) == -1) {
+        printf("fail to check socket bind port.\n");
+        return;
+    }
+    int file_port = ntohs(sin.sin_port);
+    setup_addr(&client->file_addr, host_ip, file_port);
 
 #ifdef DEBUG
     print_ip_and_port(client->addr);
