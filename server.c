@@ -261,13 +261,17 @@ void pasv(Client *client) {
             printf("fail to check socket bind port, error msg: %s(%d)\n", strerror(errno), errno);
             continue;
         }
-        int file_port = ntohs(sin.sin_port);
+        file_port = ntohs(sin.sin_port);
         if (file_port <= 0) {
             printf("invalid port\n");
             continue;
         }
         setup_addr(&client->file_addr, host_ip, file_port);
         break;
+    }
+
+    if (file_port <= 0) {
+        printf("fail to setup file socket.\n");
     }
 
 #ifdef DEBUG
