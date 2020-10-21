@@ -598,7 +598,6 @@ int main(int argc, char **argv) {
 #ifdef DEBUG
     printf("server port: %d\n", server.port);
     printf("server root: %s\n", server.root_path);
-    printf("server sockfd: %d\n", server.control_sockfd);
 #endif
 
     while (1) {
