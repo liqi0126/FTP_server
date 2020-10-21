@@ -13,6 +13,7 @@
 #define BACKLOG 5
 #define BUF_SIZE 8192
 #define RETRY_TIME 10
+#define DEBUG
 
 /*-------------------------------STRUCT-----------------------------------*/
 typedef struct Server {

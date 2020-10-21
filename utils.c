@@ -41,16 +41,22 @@ int parse_port_and_root(int argc, char **argv, Server *server) {
     for (int i = 0; i < argc; i++) {
         if (!strcmp(argv[i], "-port")) {
             if (i + 1 >= argc) {
+#ifdef DEBUG
                 printf("Error: parameter for port not found\n");
+#endif
                 return 0;
             }
             int port = atoi(argv[i + 1]);
             if (!port) {
+#ifdef DEBUG
                 printf("Error: wrong format for port number\n");
+#endif
                 return 0;
             }
             if (port > 65535) {
+#ifdef DEBUG
                 printf("Error: port number cannot be larger than 65535\n");
+#endif
                 return 0;
             }
             server->port = port;
@@ -63,7 +69,9 @@ int parse_port_and_root(int argc, char **argv, Server *server) {
     for (int i = 0; i < argc; i++) {
         if (!strcmp(argv[i], "-root")) {
             if (i + 1 >= argc) {
+#ifdef DEBUG
                 printf("Error: parameter for root not found\n");
+#endif
                 return 0;
             }
             strcpy(server->root_path, argv[i + 1]);
@@ -71,7 +79,9 @@ int parse_port_and_root(int argc, char **argv, Server *server) {
             if (dir) {
                 closedir(dir);
             } else {
+#ifdef DEBUG
                 printf("Error: open directory %s failed\n", server->root_path);
+#endif
                 return 0;
             }
             break;
@@ -94,19 +104,25 @@ int setup_listen_socket(int *sockfd, struct sockaddr_in addr) {
     // SOCK_STREAM: stream socket (a continuous stream, for TCP)
     *sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (*sockfd == -1) {
+#ifdef DEBUG
         printf("Error: fail to setup socket, error msg: %s(%d)\n", strerror(errno), errno);
+#endif
         return 0;
     }
 
     // bind socket with ip
     if (bind(*sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+#ifdef DEBUG
         printf("Error: fail to bind socket, error msg: %s(%d)\n", strerror(errno), errno);
+#endif
         return 0;
     }
 
     // listen socket
     if (listen(*sockfd, BACKLOG) == -1) {
+#ifdef DEBUG
         printf("Error: fail to listen socket, error msg: %s(%d)\n", strerror(errno), errno);
+#endif
         return 0;
     }
     return 1;
@@ -129,13 +145,17 @@ int setup_connect_socket(int *sockfd, struct sockaddr_in addr) {
     // SOCK_STREAM: stream socket (a continuous stream, for TCP)
     *sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (*sockfd == -1) {
+#ifdef DEBUG
         printf("Error: fail to setup socket, error msg: %s(%d)\n", strerror(errno), errno);
+#endif
         return 0;
     }
 
     // connect socket
     if (connect(*sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+#ifdef DEBUG
         printf("Error: fail to connect, error msg: %s(%d)\n", strerror(errno), errno);
+#endif
         return 0;
     }
     return 1;
@@ -147,7 +167,9 @@ int receive_request_from_client(Client *client) {
     char buf[BUF_SIZE];
     memset(buf, '\0', sizeof(buf));
     if (recv(client->control_sockfd, buf, BUF_SIZE, 0) < 0) {
+#ifdef DEBUG
         printf("fail to receive msg from client.\n");
+#endif
         return 0;
     }
     sscanf(buf, "%s %s", client->command, client->argu);
@@ -166,13 +188,17 @@ void send_msg_to_client(char *buffer, Client *client) {
         strcat(buffer, "\r\n");
     }
     if (send(client->control_sockfd, buffer, strlen(buffer), 0) < 0) {
+#ifdef DEBUG
         printf("Error: fail to send msg to client.\n");
+#endif
     }
 }
 
 int build_file_conn_socket(int *sockfd, Client *client) {
     if (client->state != PORT && client->state != PASV) {
+#ifdef DEBUG
         printf("require PORT/PASV mode.\n");
+#endif
         return 0;
     }
     if (client->state == PORT) {
@@ -189,7 +215,9 @@ int build_file_conn_socket(int *sockfd, Client *client) {
 
 int send_file(int sockfd, FILE *fp, int offset) {
     if (!fp) {
+#ifdef DEBUG
         printf("Error: cannot open file\n");
+#endif
         return -1;
     }
 
@@ -218,7 +246,9 @@ int send_file_by_path(int sockfd, char *file_path, int offset) {
 
 int receive_file(int sockfd, FILE *fp, int offset) {
     if (!fp) {
+#ifdef DEBUG
         printf("Error: cannot open file\n");
+#endif
         return -1;
     }
 

@@ -22,8 +22,6 @@
 #include "client.h"
 #include "utils.h"
 
-#define DEBUG
-
 void user(Client *client) {
     if (client->state == CONNECT || client->state == USER) {
         if (!strcmp(client->argu, "anonymous")) {
@@ -96,7 +94,9 @@ void retr(Client *client) {
     pthread_t thread;
     int rc = pthread_create(&thread, NULL, (void *)&retr_job, client);
     if (rc != 0) {
+#ifdef DEBUG
         printf("Error: fail to create thread %d\n", rc);
+#endif
     }
 }
 
@@ -137,7 +137,9 @@ void stor(Client *client) {
     pthread_t thread;
     int rc = pthread_create(&thread, NULL, (void *)&stor_job, client);
     if (rc != 0) {
+#ifdef DEBUG
         printf("Error: fail to create thread %d\n", rc);
+#endif
     }
 }
 
@@ -178,7 +180,9 @@ void appe(Client *client) {
     pthread_t thread;
     int rc = pthread_create(&thread, NULL, (void *)&appe_job, client);
     if (rc != 0) {
+#ifdef DEBUG
         printf("Error: fail to create thread %d\n", rc);
+#endif
     }
 }
 
@@ -245,12 +249,16 @@ void pasv(Client *client) {
 
     int file_port = 0;
     for (int retry = 0; retry < RETRY_TIME; retry++) {
+#ifdef DEBUG
         printf("setup port attempt %d\n", retry);
+#endif
         struct sockaddr_in addr;
         setup_local_addr(&addr, 0);  // port 0 to connect a usable port
         if (!setup_listen_socket(&client->file_sockfd, addr)) {
             close(client->file_sockfd);
+#ifdef DEBUG
             printf("fail to setup listen socket.\n");
+#endif
             continue;
         }
 
@@ -258,12 +266,16 @@ void pasv(Client *client) {
         struct sockaddr_in sin;
         socklen_t len;
         if (getsockname(client->file_sockfd, (struct sockaddr *)&sin, &len) == -1) {
+#ifdef DEBUG
             printf("fail to check socket bind port, error msg: %s(%d)\n", strerror(errno), errno);
+#endif
             continue;
         }
         file_port = ntohs(sin.sin_port);
         if (file_port <= 0) {
+#ifdef DEBUG
             printf("invalid port\n");
+#endif
             continue;
         }
         setup_addr(&client->file_addr, host_ip, file_port);
@@ -271,7 +283,10 @@ void pasv(Client *client) {
     }
 
     if (file_port <= 0) {
+#ifdef DEBUG
         printf("fail to setup file socket.\n");
+#endif
+        return;
     }
 
 #ifdef DEBUG
@@ -596,7 +611,9 @@ int main(int argc, char **argv) {
         /* client.control_sockfd = accept(server.control_sockfd, (struct sockaddr *)&client.addr, &addrlen); */
         client.control_sockfd = accept(server.control_sockfd, NULL, NULL);
         if (client.control_sockfd == -1) {
+#ifdef DEBUG
             printf("Error: fail to connect client, error msg: %s(%d)\n", strerror(errno), errno);
+#endif
             return -1;
         }
         pid_t pid = fork();
