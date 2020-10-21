@@ -151,6 +151,12 @@ int receive_request_from_client(Client *client) {
         return 0;
     }
     sscanf(buf, "%s %s", client->command, client->argu);
+
+    if (strstr(client->argu, "..") != NULL) {
+        send_msg_to_client("530 \"..\" pattern cannot occured in argument for safety.\r\n", client);
+        return 0;
+    }
+
     return 1;
 }
 
